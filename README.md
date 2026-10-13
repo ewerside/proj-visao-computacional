@@ -10,7 +10,7 @@ Este repositório contém a **primeira parte** do projeto (AP1). A segunda parte
 
 ## O que é o projeto
 
-Usando apenas a **webcam** do notebook, o programa acompanha a posição dos seus olhos e **muda a perspectiva da imagem na tela de acordo com a posição da sua cabeça**. O resultado é uma ilusão de 3D: a tela deixa de parecer uma imagem plana e passa a parecer uma *janela* para dentro de uma caixa. Se você move a cabeça para a direita, enxerga mais o lado esquerdo do interior da caixa; se chega mais perto, a cena se amplia, como em uma janela de verdade. Essa técnica é conhecida como *head-coupled perspective*.
+Usando apenas a **webcam** do notebook, o programa acompanha a posição dos seus olhos e **muda a perspectiva da imagem na tela de acordo com a posição da sua cabeça**. O resultado é uma ilusão de 3D: a tela deixa de parecer uma imagem plana e passa a parecer uma *janela* para dentro de uma caixa. Se você move a cabeça para a direita, enxerga mais o lado esquerdo do interior da caixa; se chega mais perto da tela, enxerga uma parte maior do interior da caixa, como em uma janela de verdade. Essa técnica é conhecida como *head-coupled perspective*.
 
 ## Como funciona (resumo)
 
