@@ -61,6 +61,10 @@ Além do núcleo descrito acima, o código já traz alguns testes e recursos exp
 
 ## Objetivo futuro (AP2)
 
-> **TODO (grupo):** o texto do artigo não foi passado a quem escreveu este README. Substituir este parágrafo por 2–3 linhas resumindo o objetivo descrito no artigo.
+O objetivo final do grupo é o artigo *"Smartphone-Assisted Calibration of Multi-Screen Display Geometry for Head-Coupled Perspective Rendering"* (formato SBrT 2026). A ideia é estender a *head-coupled perspective* de uma tela para **várias telas lado a lado**, o que exige conhecer a posição de cada tela, em milímetros, num referencial comum. Para isso, propomos calibrar tudo automaticamente usando apenas um **smartphone comum**:
 
-O projeto descrito no artigo da disciplina é o objetivo final do grupo e será desenvolvido como trabalho da **AP2**. O que está neste repositório é a base inicial para ele.
+- marcadores **ChArUco** exibidos em cada tela, com tamanho físico calculado a partir da densidade de pixels do painel;
+- um **espelho plano** para recuperar telas fora do campo de visão da câmera;
+- um **alinhamento perceptual** (colinearidade de linhas através da junção entre telas) para refinar o resultado.
+
+Esse trabalho será desenvolvido na **AP2**. O que está neste repositório é a base inicial: o rastreamento da cabeça e a projeção em perspectiva assimétrica de uma única tela.
