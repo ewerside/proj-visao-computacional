@@ -34,6 +34,7 @@ telas.json, ou com --uma-tela, e o AP1 de sempre, uma tela so.
 
 import argparse
 import math
+import os
 import time
 from collections import deque
 
@@ -99,6 +100,9 @@ def abrir_janelas(lista, multi):
                              "Rode de novo o calibrar_telas.py mostrar.")
     else:
         alvos = [mons[monitores.escolher_notebook(mons)] if len(mons) > 1 else None]
+        if alvos[0] is not None:
+            print(f"modo de uma tela no monitor {alvos[0].dispositivo} (o notebook). "
+                  "Errado? Ajuste MONITOR_NOTEBOOK no config.py.")
     nomes = [_nome_janela(tl, i) for i, tl in enumerate(lista)]
     tamanhos = [None] * len(lista)
     for i in reversed(range(len(lista))):
@@ -174,10 +178,13 @@ def desenhar_debug(canvas, head, ipd_px, fps, ms_render, tem_rosto,
         + ("   ESTOUROU" if estereo["paralaxe"] > estereo["limite"] else ""),
     ]
     if guinada is not None:
-        # guinada = (graus, k, ligada). k e o fator que multiplica X, Y e Z.
-        graus, k, ligada = guinada
-        linhas.append(f"guinada {graus:+5.1f} deg   k {k:.3f}   correcao "
-                      + ("ON" if ligada else "OFF (y liga)"))
+        # guinada = (graus, k, ligada, tem_matriz). k multiplica X, Y e Z.
+        graus, k, ligada, tem_matriz = guinada
+        if ligada and not tem_matriz:
+            estado = "SEM MATRIZ do MediaPipe (correcao inativa)"
+        else:
+            estado = "ON" if ligada else "OFF (y liga)"
+        linhas.append(f"guinada {graus:+5.1f} deg   k {k:.3f}   correcao {estado}")
     for i, linha in enumerate(linhas):
         cv2.putText(canvas, linha, (24, 50 + i * 34), FONT, 0.7,
                     branco if composto else (0, 230, 0), 2, cv2.LINE_AA)
@@ -209,6 +216,11 @@ def main(argv=None):
     # Antes de qualquer janela: depois o Windows nao deixa mudar (monitores.py).
     modo_dpi = monitores.tornar_dpi_aware()
     # Sem telas.json e o AP1: uma tela, a do config, com pose identidade.
+    if not args.uma_tela and not os.path.exists(args.telas):
+        if os.path.abspath(args.telas) != os.path.abspath(config.TELAS_FILE):
+            raise SystemExit(f"--telas {args.telas}: arquivo nao existe")
+        print(f"sem {args.telas}: modo de uma tela (AP1). Para usar as duas telas, "
+              "rode o calibrar_telas.py (ver docs/TESTE_AP2.md).")
     lista = None if args.uma_tela else tls.carregar(args.telas)
     multi = lista is not None
     if not multi:
@@ -246,7 +258,10 @@ def main(argv=None):
     filtro_theta = filters.OneEuro(config.MIN_CUTOFF, config.BETA, config.D_CUTOFF)
     usar_filtro = True
     corrigir_guinada = config.CORRIGIR_GUINADA
-    guinada, k_escorco = 0.0, 1.0   # so para o overlay
+    guinada, k_escorco, tem_matriz = 0.0, 1.0, False   # so para o overlay
+    # Eixo entre os olhos em 3D, no mundo, para o par estereo (ver abaixo).
+    filtro_eixo = filters.OneEuro3D(config.MIN_CUTOFF, config.BETA, config.D_CUTOFF)
+    eixo_olhos = None
     head = HEAD_PADRAO.copy()
     theta = 0.0
     ipd_px = 0.0
@@ -255,7 +270,7 @@ def main(argv=None):
     paleta = scn.paleta_neutra()
     usar_paleta = True
     z_min_estatico = z_min_estaticos(nome_cena, cena_estatica, lista)
-    congelado = None     # (eye, theta) capturados pela barra de espaco
+    congelado = None     # (eye, theta, eixo) capturados pela barra de espaco
     solo = None          # None, "L" ou "R": um olho so, para diagnostico
     trocar_olhos = False
     teste_vazamento = False
@@ -300,10 +315,13 @@ def main(argv=None):
                 tem_rosto = True
                 ipd_px, _mid = tracking.ipd_and_midpoint(pts[tracking.IRIS_L],
                                                          pts[tracking.IRIS_R])
+                tem_matriz = eixo is not None
                 if eixo is not None:
                     guinada = tracking.guinada_graus(eixo)
                     k_escorco = tracking.fator_escorco(eixo, _mid, frame.shape,
                                                        f_px)
+                else:
+                    guinada, k_escorco = 0.0, 1.0
                 # O filtro e alimentado sempre, mesmo desligado, para que o
                 # estado dele fique atual e o toggle nao provoque salto.
                 suave = np.array(filtro(bruto, time.perf_counter()))
@@ -326,11 +344,33 @@ def main(argv=None):
                 theta = filtro_theta(math.atan2(-(v_r - v_l), u_r - u_l),
                                      time.perf_counter())
 
+                # Eixo entre os olhos em 3D, para o par estereo. O theta acima e
+                # so a inclinacao 2D na imagem, e com duas telas ele mente:
+                # virar a cabeca para o monitor, com a camera 10 cm acima dos
+                # olhos, aparece como rolagem falsa (a iris mais longe sobe), e
+                # um eixo preso ao plano do notebook poe os dois olhos a
+                # distancias diferentes do monitor girado. As duas coisas viram
+                # paralaxe vertical, que nao funde. A rotacao da cabeca do
+                # MediaPipe da o eixo de verdade. Imagem espelhada -> mundo:
+                # x = +X, y para baixo = -Y, profundidade = +Z. O sinal segue
+                # o vetor iris esquerda -> direita, que aponta para +X.
+                if eixo is not None:
+                    d = np.array([eixo[0], -eixo[1], eixo[2]], float)
+                    if d[0] * (u_r - u_l) - d[1] * (v_r - v_l) < 0:
+                        d = -d
+                    if not config.USE_HEAD_ROLL:
+                        d[1] = 0.0
+                    d = np.array(filtro_eixo(d, time.perf_counter()), float)
+                    eixo_olhos = d / max(np.linalg.norm(d), 1e-9)
+                else:
+                    eixo_olhos = None
+
         eye = tracking.eye_in_screen_coords(head)
         eye[2] = max(eye[2], config.EYE_Z_MIN)
         theta_uso = theta if config.USE_HEAD_ROLL else 0.0
+        eixo_uso = eixo_olhos
         if congelado is not None:
-            eye, theta_uso = congelado
+            eye, theta_uso, eixo_uso = congelado
         historico.append(eye.copy())
 
         t0 = time.perf_counter()
@@ -361,7 +401,12 @@ def main(argv=None):
             # A formula do AP1 no referencial de cada tela e exata no notebook e
             # conservadora no monitor girado (t_estereo.py); vale a menor.
             stereo_scale = min(scn.escala_confortavel(e, z) for e, z in zip(olhos, z_mins))
-        eye_L, eye_R = scn.stereo_eyes(eye, theta_uso, stereo_scale)
+        if eixo_uso is not None:
+            # Translacao pura, como no stereo_eyes, mas pelo eixo 3D da cabeca.
+            meia = (config.IPD_REAL / 2.0) * stereo_scale
+            eye_L, eye_R = eye - meia * eixo_uso, eye + meia * eixo_uso
+        else:
+            eye_L, eye_R = scn.stereo_eyes(eye, theta_uso, stereo_scale)
         if trocar_olhos:
             eye_L, eye_R = eye_R, eye_L
         pal = paleta if (anaglifo and usar_paleta) else None
@@ -404,7 +449,7 @@ def main(argv=None):
                             "auto": escala_auto, "limite": px_w / 30,
                             "paralaxe": scn.paralaxe_px(olhos[0], z_mins[0], px_w,
                                                         theta_uso, stereo_scale)},
-                           (guinada, k_escorco, corrigir_guinada))
+                           (guinada, k_escorco, corrigir_guinada, tem_matriz))
         # Daqui para baixo e tudo overlay, sempre DEPOIS da composicao e sempre
         # em cor neutra quando ela esta ativa: canal isolado fantasma.
         cor_aviso = (255, 255, 255) if (anaglifo and solo is None) else (0, 200, 255)
@@ -447,7 +492,8 @@ def main(argv=None):
             if nome_cena not in fundos:
                 fundos[nome_cena] = [scn.fundo(nome_cena, w, h) for w, h in tamanhos]
         if tecla == ord(" "):
-            congelado = None if congelado is not None else (eye.copy(), theta_uso)
+            congelado = (None if congelado is not None else
+                         (eye.copy(), theta_uso, None if eixo_uso is None else eixo_uso.copy()))
         if tecla in (ord(","), ord(".")):
             min_cutoff = max(0.05, min_cutoff * (0.8 if tecla == ord(",") else 1.25))
             filtro.ajustar(min_cutoff=min_cutoff)

@@ -25,6 +25,7 @@ import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
 import config  # noqa: E402
+import detectar  # noqa: E402
 import telas  # noqa: E402
 
 GUI = _ambiente.GuiFalsa().instalar()
@@ -84,7 +85,7 @@ def main():
         if len(g_ap1) != len(g_novo) or iguais != len(g_ap1):
             falhas.append("modo de uma tela diferente da AP1")
         for (q, nome), im in img.items():
-            cv2.imwrite(os.path.join(_ambiente.SAIDA, f"main_uma_tela_q{q}.png"),
+            detectar.gravar_imagem(os.path.join(_ambiente.SAIDA, f"main_uma_tela_q{q}.png"),
                         cv2.resize(im, (960, 540), interpolation=cv2.INTER_AREA))
 
     caminho = os.path.join(_ambiente.SAIDA, "telas_teste.json")
@@ -115,7 +116,7 @@ def main():
             if all(im is not None for im in ims):
                 lado = np.hstack([cv2.resize(im, (640, 360), interpolation=cv2.INTER_AREA)
                                   for im in ims])
-                cv2.imwrite(os.path.join(_ambiente.SAIDA, f"main_duas_telas_q{q}.png"),
+                detectar.gravar_imagem(os.path.join(_ambiente.SAIDA, f"main_duas_telas_q{q}.png"),
                             lado)
     topo = [a for a in GUI.propriedades if len(a) >= 3 and a[1] == getattr(
         cv2, "WND_PROP_TOPMOST", -999)]

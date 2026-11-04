@@ -32,6 +32,15 @@ cd head_coupled
 
 O `main` continua com a AP1 intacta. Tudo da AP2 está nessa branch.
 
+Se o checkout reclamar de arquivos que seriam sobrescritos:
+- **Em `head_coupled/__pycache__`:** são arquivos gerados que a AP1 tinha versionado por engano. Descarte-os e repita o checkout:
+
+  ```bash
+  git restore head_coupled/__pycache__
+  ```
+
+- **No `config.py`:** você tem medidas editadas lá. Anote os seus valores, rode `git stash`, faça o checkout e digite os valores de novo no `config.py` novo.
+
 ## 1. Instalar as dependências (5 min)
 
 Primeiro veja se há dois OpenCV instalados ao mesmo tempo. O README da AP1 mandava instalar `opencv-python`, e o mediapipe já traz o `opencv-contrib-python`.
@@ -97,7 +106,7 @@ Hoje o `config.py` tem 0,345 × 0,194 m, que veio do EDID do painel com incertez
 | A linha "janela … monitor …" diz **OK** nas duas telas | Escala do Windows: ponha 100% naquele monitor e rode de novo |
 | A barra de tarefas não cobre o monitor externo | Me avise |
 | Clicando em cada janela e apertando uma tecla, ela aparece nas duas | Me avise |
-| A palavra **NOTEBOOK** está no notebook | Aperte `t` até ficar certo. Ao sair, o script mostra a linha para pôr no `config.py` (`MONITOR_NOTEBOOK = ...`) |
+| A palavra **NOTEBOOK** está no notebook | Aperte `t` até ficar certo. Ao sair, o script mostra uma linha `MONITOR_NOTEBOOK = ...`. **Copie essa linha para o `config.py` antes de seguir.** O `--uma-tela` e o `manual` dependem dela |
 
 4. Saia com `q`.
 
@@ -119,14 +128,22 @@ Ao olhar para o monitor do lado, você gira a cabeça. Sem correção, a distân
 python teste_guinada.py
 ```
 
-Siga o protocolo escrito no topo do arquivo `teste_guinada.py`. Resumo:
-1. Sente-se a ~60 cm da tela.
-2. Cole post-its a 22 cm e a 35 cm do centro da tela, dos dois lados.
-3. Aperte ESPAÇO para começar a gravar. Aponte o **nariz** para cada post-it, segurando 2 s em cada um, e volte ao centro.
-4. Aperte ESPAÇO de novo: o script imprime a tabela e grava um CSV.
-5. Repita com a cadeira ~15 cm para o lado.
+Siga o protocolo escrito no topo do arquivo `teste_guinada.py` (`python teste_guinada.py --help` mostra o texto). Resumo:
+1. **Clique na janela "teste de guinada"** antes de usar as teclas. Senão elas vão para o terminal.
+2. Sente-se a ~60 cm da tela.
+3. Cole post-its a 22 cm e a 35 cm do centro da tela, dos dois lados.
+4. Aperte ESPAÇO para começar a gravar.
+5. Comece com o nariz **reto para a frente**, perpendicular à tela, por 2 s.
+6. Aponte o **nariz** para cada post-it, segurando 2 s em cada um, e volte reto para a frente.
+7. Aperte ESPAÇO de novo: o script imprime a tabela e grava um CSV.
+8. Repita com a cadeira ~15 cm para o lado, também começando e terminando reto para a frente (perpendicular à tela, não apontando para o centro dela).
 
 **Aprovado:** o veredito da tabela é "OK", ou seja, a correção removeu 60% ou mais do erro.
+
+Se sair "corrige demais", "PARCIAL" ou "FALHOU":
+1. Olhando reto para a frente, aperte `m`: o eixo deve sair perto de `(1, 0, 0)` ou `(-1, 0, 0)`.
+2. Me mande essa saída, a tabela e o CSV.
+3. Enquanto isso, a correção pode ser desligada com a tecla `y`.
 
 Teste rápido alternativo: no `main.py`, aperte `d` para ver o painel. A linha `guinada … k … correcao ON` mostra o ângulo da cabeça. Gire a cabeça, compare o `Z` com `y` ligado e desligado, e veja que com a correção ele varia bem menos.
 
@@ -137,16 +154,18 @@ Isto ainda não usa o celular. Serve para ver as duas telas funcionando e é o p
 1. **VOCÊ:** em `config.py`, ponha a diagonal do monitor externo em `MONITOR_DIAGONAL_POL`, em polegadas. É a que está na etiqueta ou na caixa, por exemplo `24.0`.
 2. **VOCÊ:** meça com trena:
    - `--angulo`: quantos graus o monitor está virado para você. Na dúvida, estime.
-   - `--folga`: a distância, em metros, entre a borda acesa do notebook e a borda acesa do monitor que ficam lado a lado.
+   - `--folga`: a distância, em metros, entre a borda acesa do notebook e a borda acesa do monitor que ficam lado a lado, medida **na horizontal, ao longo da borda de baixo do notebook**.
    - `--base`: a altura da borda de baixo da área acesa do monitor menos a do notebook, as duas medidas a partir da mesa, em metros.
+   - `--recuo`: quanto o canto de baixo do monitor, do lado do notebook, está **atrás** da linha da borda de baixo do notebook, em metros. Positivo quer dizer mais longe de você; o pé do monitor costuma deixá-lo uns centímetros atrás.
    - `--inclinacao`: quantos graus a tampa do notebook está inclinada para trás em relação à vertical. Um app de nível no celular mede isso.
 3. Rode, com os seus números:
 
    ```bash
-   python calibrar_telas.py manual --angulo 30 --folga 0.03 --base 0.05 --inclinacao 15
+   python calibrar_telas.py manual --angulo 30 --folga 0.03 --base 0.05 --recuo 0.04 --inclinacao 15
    ```
 
-   Se o monitor estiver à esquerda, acrescente `--lado esquerda`.
+   - Se o monitor estiver à esquerda, acrescente `--lado esquerda`.
+   - O comando mostra `notebook = ...  monitor = ...`. Se estiver trocado, rode de novo com `--notebook` seguido do nome que ele mostra (ou ajuste `MONITOR_NOTEBOOK` no `config.py`).
 4. Rode:
 
    ```bash
@@ -241,6 +260,8 @@ Para eu ajudar, me mande:
 | Sintoma | Causa provável e o que fazer |
 |---|---|
 | `nao achei o monitor da tela 'monitor'` | O monitor foi desligado, mudou de porta ou o Windows o renumerou. Rode de novo o `calibrar_telas.py mostrar` + `calcular`, ou use `python main.py --uma-tela` |
+| `--telas ...: arquivo nao existe` | Caminho do `telas.json` digitado errado |
+| Painel `d` diz `SEM MATRIZ do MediaPipe` | A versão do mediapipe não entrega a rotação da cabeça, e a correção de guinada fica desligada. Me mande a saída de `pip show mediapipe` |
 | `So ha 1 monitor` | Win+P → Estender |
 | Janela do monitor aparece no notebook | Me mande a saída do `testar_monitores.py` |
 | `so N foto(s) mostram as DUAS telas` | Veja as miniaturas em `dbg/`: chegue mais perto (0,6–0,8 m), evite reflexo, confira que os padrões estavam na tela |

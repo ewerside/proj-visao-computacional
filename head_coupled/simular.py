@@ -447,6 +447,7 @@ if __name__ == "__main__":
     import argparse
     import os
     import time
+    import detectar
     import padroes as pd
     ap = argparse.ArgumentParser(description="fotos sinteticas das duas telas")
     ap.add_argument("--pasta", default="fotos_sim")
@@ -463,8 +464,8 @@ if __name__ == "__main__":
     fotos = gerar_fotos(cena, cam, nivel, args.n, semente=args.semente)
     os.makedirs(args.pasta, exist_ok=True)
     for i, f in enumerate(fotos):
-        cv2.imwrite(os.path.join(args.pasta, f"foto_{i:02d}.jpg"), f["img"],
-                    [cv2.IMWRITE_JPEG_QUALITY, 95])
+        detectar.gravar_imagem(os.path.join(args.pasta, f"foto_{i:02d}.jpg"), f["img"],
+                               [cv2.IMWRITE_JPEG_QUALITY, 95])
     salvar_verdade(os.path.join(args.pasta, "verdade.json"), cena, cam, fotos, nivel)
     import json
     with open(os.path.join(args.pasta, "padroes.json"), "w", encoding="utf-8") as fh:

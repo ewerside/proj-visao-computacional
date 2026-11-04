@@ -85,6 +85,45 @@ def teste_calcular(falhas):
     return saida
 
 
+def teste_robustez(falhas, pasta_fotos):
+    """Casos que a revisao levantou, reaproveitando as fotos simuladas:
+    (a) uma foto de outro tamanho que vem PRIMEIRO na lista nao pode derrubar
+        as outras; (b) diagonal nominal errada (27 em vez de 24) nao pode
+        disparar o aviso de 'fotos discordam' nem estragar o resultado."""
+    import cv2
+    import calibrar_telas
+    import detectar
+    if pasta_fotos is None:
+        return
+    pasta = os.path.join(_ambiente.SAIDA, "fotos_sim_robustez")
+    if os.path.isdir(pasta):
+        shutil.rmtree(pasta)
+    shutil.copytree(os.path.dirname(pasta_fotos), pasta,
+                    ignore=shutil.ignore_patterns("dbg", "telas.json"))
+    img = detectar.ler_foto(os.path.join(pasta, "foto_00.jpg"))
+    detectar.gravar_imagem(os.path.join(pasta, "aaa_em_pe.jpg"), cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE))
+    caminho = os.path.join(pasta, "padroes.json")
+    with open(caminho, encoding="utf-8") as fh:
+        d = json.load(fh)
+    w, h = d["telas"][1]["tamanho_m"]
+    d["telas"][1]["tamanho_m"] = [w * 27 / 24, h * 27 / 24]
+    d["diagonal_pol_nominal"] = 27.0
+    with open(caminho, "w", encoding="utf-8") as fh:
+        json.dump(d, fh)
+    res = calibrar_telas.calcular([pasta], saida=os.path.join(pasta, "telas.json"),
+                                  pasta_debug=None, verbose=False)
+    e, q = res["erro"], res["telas_json"]["qualidade"]
+    print(f"robustez: {len(res['telas_json']['fotos'])} fotos usadas, erro pior quina "
+          f"{e['pior_quina_mm']:.3f} mm, tamanho {e['tamanho_pct']:+.3f}%, dispersao "
+          f"{q['dispersao_entre_fotos']}, avisos {res['avisos']}")
+    if "aaa_em_pe.jpg" in res["telas_json"]["fotos"] or len(res["telas_json"]["fotos"]) != 10:
+        falhas.append("robustez: a foto em pe devia ser ignorada e as 10 boas usadas")
+    if e["pior_quina_mm"] > LIMITES["pior_quina_mm"] or abs(e["tamanho_pct"]) > LIMITES["tamanho_pct"]:
+        falhas.append(f"robustez: diagonal nominal errada estragou o resultado {e}")
+    if q["dispersao_entre_fotos"]["trans_mm"] > 2.0 or any("discordam" in a for a in res["avisos"]):
+        falhas.append("robustez: diagonal nominal errada disparou a dispersao/aviso falso")
+
+
 def teste_manual(falhas):
     import calibrar_telas
     import telas
@@ -145,6 +184,7 @@ def main():
     falhas = []
     teste_mostrar(falhas)
     telas_json = teste_calcular(falhas)
+    teste_robustez(falhas, telas_json)
     teste_manual(falhas)
     teste_main_com_calibracao(falhas, telas_json)
     for f in falhas:

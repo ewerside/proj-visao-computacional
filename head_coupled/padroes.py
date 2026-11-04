@@ -361,7 +361,8 @@ def main():
     else:
         for p in pad:
             nome = f"padrao_{p.tela.nome}.png"
-            cv2.imwrite(nome, p.imagem())
+            import detectar
+            detectar.gravar_imagem(nome, p.imagem())
             print("gravado", nome)
 
 

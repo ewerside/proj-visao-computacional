@@ -29,9 +29,11 @@ do OpenCV (window_w32.cpp) e na documentacao da Microsoft:
 NAO usamos o pacote screeninfo: ele chama SetProcessDpiAwareness(2) sozinho a
 cada get_monitors(), o que mudaria o modo de DPI no meio do programa.
 
-Fora do Windows (testes automaticos, sem tela) listar_monitores() devolve
-monitores falsos: um do tamanho do config, mais os da variavel de ambiente
-AP2_MONITORES_FALSOS, no formato "LxA+X+Y;LxA+X+Y" (ex. "1920x1080+1920+0").
+Testes automaticos (sem tela): com a variavel de ambiente AP2_MONITORES_FALSOS
+definida, em QUALQUER sistema, listar_monitores() devolve monitores falsos: um
+do tamanho do config, mais os da variavel, no formato "LxA+X+Y;LxA+X+Y" (ex.
+"1920x1080+1920+0"; vazia = so o primeiro). Fora do Windows, sem a variavel,
+devolve so o primeiro.
 """
 
 import ctypes
@@ -55,6 +57,11 @@ HORZSIZE, VERTSIZE = 4, 6                # GetDeviceCaps: tamanho fisico em mm
 _RECUO_JANELA = 50
 
 _modo_dpi = None                         # cache: o modo so pode ser definido uma vez
+_tela_acordada = False
+
+
+def _falsos():
+    return "AP2_MONITORES_FALSOS" in os.environ
 
 
 @dataclass
@@ -108,8 +115,8 @@ def tornar_dpi_aware():
     global _modo_dpi
     if _modo_dpi is not None:
         return _modo_dpi
-    if sys.platform != "win32":
-        _modo_dpi = "nao-windows"
+    if sys.platform != "win32" or _falsos():
+        _modo_dpi = "nao-windows" if sys.platform != "win32" else "monitores-falsos"
         return _modo_dpi
     from ctypes import wintypes
     user32 = ctypes.windll.user32
@@ -148,7 +155,7 @@ def tornar_dpi_aware():
 def listar_monitores():
     """Lista os monitores, o principal primeiro. Chama tornar_dpi_aware() antes."""
     tornar_dpi_aware()
-    if sys.platform != "win32":
+    if sys.platform != "win32" or _falsos():
         mons = _monitores_falsos()
     else:
         mons = _monitores_windows()
@@ -310,7 +317,7 @@ def focar_janela(nome):
     contorna a trava de foreground do Windows. O titulo precisa ser ASCII: o
     OpenCV cria a janela com CreateWindowExA.
     """
-    if sys.platform != "win32":
+    if sys.platform != "win32" or _falsos():
         return
     try:
         u = ctypes.windll.user32
@@ -319,6 +326,27 @@ def focar_janela(nome):
             u.keybd_event(0x12, 0, 0, 0)
             u.SetForegroundWindow(hwnd)
             u.keybd_event(0x12, 0, 2, 0)
+    except Exception:
+        pass
+
+
+def manter_tela_acordada():
+    """Impede o Windows de apagar ou escurecer a tela por inatividade.
+
+    Nem as fotos da calibracao (ninguem toca no PC) nem a demonstracao (so a
+    cabeca se mexe) geram teclado ou mouse, e a webcam nao conta como uso. Vale
+    ate o processo terminar; o Windows libera sozinho.
+    """
+    global _tela_acordada
+    if _tela_acordada or sys.platform != "win32" or _falsos():
+        return
+    try:
+        from ctypes import wintypes
+        k = ctypes.windll.kernel32
+        k.SetThreadExecutionState.argtypes = [wintypes.DWORD]
+        k.SetThreadExecutionState.restype = wintypes.DWORD
+        k.SetThreadExecutionState(0x80000002)     # ES_CONTINUOUS | ES_DISPLAY_REQUIRED
+        _tela_acordada = True
     except Exception:
         pass
 
@@ -335,6 +363,7 @@ def abrir_tela_cheia(nome, monitor=None, sempre_no_topo=False):
     """
     import cv2
     tornar_dpi_aware()
+    manter_tela_acordada()
     cv2.namedWindow(nome, cv2.WINDOW_NORMAL)
     if monitor is not None:
         cv2.moveWindow(nome, monitor.x + _RECUO_JANELA, monitor.y + _RECUO_JANELA)

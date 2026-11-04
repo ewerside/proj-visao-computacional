@@ -189,6 +189,22 @@ def ler_foto(caminho):
     return img
 
 
+def gravar_imagem(caminho, img, params=()):
+    """cv2.imwrite que funciona em caminho com acento no Windows.
+
+    O imwrite falha CALADO (devolve False) nesse caso, pelo mesmo motivo do
+    imread (fopen de 8 bits). Aqui a imagem e codificada na memoria e gravada
+    pelo Python. Levanta IOError se nao conseguir.
+    """
+    import os
+    caminho = str(caminho)
+    ext = os.path.splitext(caminho)[1] or ".png"
+    ok, buf = cv2.imencode(ext, img, list(params))
+    if not ok:
+        raise IOError(f"nao consegui codificar a imagem para {caminho}")
+    buf.tofile(caminho)
+
+
 def desenhar(cinza, deteccoes, escala=0.25):
     """Miniatura colorida com os cantos detectados (para conferir a olho)."""
     img = cv2.cvtColor(cv2.resize(cinza, None, fx=escala, fy=escala,

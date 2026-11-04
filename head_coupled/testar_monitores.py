@@ -19,7 +19,7 @@ O que conferir (as mesmas instrucoes aparecem nas janelas):
   4. Clique numa janela, aperte uma tecla, e ela aparece nas DUAS janelas.
      Faca o mesmo clicando na outra.
   5. A palavra NOTEBOOK aparece na tela do notebook. Trocado? Aperte t ate
-     ficar certo; ao sair o script diz o que pôr no config.py.
+     ficar certo; ao sair o script diz o que por no config.py.
 
 q ou ESC sai.
 """

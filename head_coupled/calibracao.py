@@ -34,7 +34,7 @@ passo com o celular esta no docstring dele e em docs/TESTE_AP2.md.
 
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import cv2
 import numpy as np
@@ -350,8 +350,37 @@ def calibrar(fotos_det, tam, flags=FLAGS_INTRINSECOS, ba=True, refinar_intr=True
                 ini[j] = (Rcw, tcb - Rcw @ t_m)
         cal.ba = ajuste_feixes(fotos_det, K, dist, ini, R_m, t_m, refinar_intr,
                                estimar_escala, perda)
+        if estimar_escala and abs(cal.ba.escala_B - 1.0) > 1e-6:
+            _dispersao_com_escala(cal, fotos_det)
     cal.tempo_s = {"intrinsecos": t1 - t0, "media": t2 - t1, "ba": time.perf_counter() - t2}
     return cal
+
+
+def _dispersao_com_escala(cal, fotos_det):
+    """Refaz a dispersao entre fotos com o tamanho de B que o ajuste estimou.
+
+    As poses por foto do passo 3 usam o tamanho NOMINAL de B (da diagonal
+    informada). Com a diagonal errada, B sai mais perto ou mais longe em cada
+    foto por um fator que depende de onde a foto foi tirada, e as fotos
+    "discordam" sem nada ter mexido: um monitor de 32 pol informado como 24
+    dava 110 mm de dispersao com o resultado final certo. Refazendo com a
+    escala estimada, a dispersao volta a medir so o que interessa.
+    """
+    s = cal.ba.escala_B
+    fd = [[d if (i != 1 or d is None) else replace(d, obj=d.obj * s)
+           for i, d in enumerate(dets)] for dets in fotos_det]
+    K, dist = _K(cal.ba.intr), np.asarray(cal.ba.intr[4:], float)
+    _poses, rel = poses_relativas(fd, K, dist)
+    if not rel:
+        return
+    js = [j for j, _, _ in rel]
+    R_m, t_m, ok = media_robusta([R for _, R, _ in rel], [t for _, _, t in rel])
+    ang = np.array([angulo_graus(R_m, R) for _, R, _ in rel])
+    dtt = np.array([np.linalg.norm(t - t_m) for _, _, t in rel]) * 1000
+    cal.aceitas = [j for j, o in zip(js, ok) if o]
+    cal.descartadas = [j for j, o in zip(js, ok) if not o]
+    cal.disp_rot_graus = float(np.median(ang[ok]))
+    cal.disp_trans_mm = float(np.median(dtt[ok]))
 
 
 # ------------------------------------------------------------------ saida

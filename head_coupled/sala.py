@@ -5,8 +5,10 @@ Estes vivem no referencial do mundo (a tela do notebook) e cada tela mostra o
 pedaco que esta atras dela, pela regra do portal de telas.render_tela. O bezel
 e o vao entre as telas viram a parede entre duas janelas da mesma sala.
 
-Tudo e posicionado a partir das telas calibradas (juncao, cantos), entao o
-cenario continua bem enquadrado para qualquer pose que a calibracao devolver.
+Tudo e posicionado a partir das telas calibradas (juncao, cantos, profundidade
+da tela mais funda), entao o cenario continua enquadrado para a pose que a
+calibracao devolver: monitor a direita ou a esquerda, girado, inclinado, em
+cima do notebook (as varetas viram verticais) ou uma TV mais atras.
 
   sala         casca de sala (chao, paredes, teto em grade), cubos atravessando
                a juncao, um cubo que anda de uma tela para a outra e tres
@@ -54,27 +56,44 @@ def _n(comprimento, passo):
     return max(1, int(round(comprimento / passo)))
 
 
+def z_referencia(telas):
+    """Profundidade do canto mais fundo das telas. As profundidades das cenas
+    sao contadas a partir daqui, para uma TV mais atras nao engolir a cena."""
+    return min(0.0, float(np.vstack([tl.cantos_mundo() for tl in telas])[:, 2].min()))
+
+
 def limites(telas):
     """Caixa da sala no mundo, a partir dos cantos de todas as telas."""
     cantos = np.vstack([tl.cantos_mundo() for tl in telas])
     x0, x1 = cantos[:, 0].min() - 0.55, cantos[:, 0].max() + 0.55
     y0, y1 = cantos[:, 1].min() - 0.03, cantos[:, 1].max() + 0.20
-    z0, z1 = -1.20, cantos[:, 2].max() + 0.35
+    z0, z1 = z_referencia(telas) - 1.20, cantos[:, 2].max() + 0.35
     return x0, x1, y0, y1, z0, z1
+
+
+def lado_a_lado(telas):
+    """True se a segunda tela esta mais ao lado do que acima/abaixo da primeira."""
+    if len(telas) < 2:
+        return True
+    d = telas[1].t - telas[0].t
+    return abs(d[0]) >= abs(d[1])
 
 
 def juncao(telas):
     """Ponto no meio do vao entre as duas primeiras telas, no mundo.
 
-    Pega a borda vertical de cada tela mais proxima da outra e devolve o ponto
-    medio entre os pontos medios dessas bordas. Com uma tela so, o centro dela.
+    Pega, entre os pontos medios das quatro bordas de cada tela, o par mais
+    proximo de uma tela para a outra (bordas laterais com o monitor ao lado,
+    de cima/de baixo com ele em cima) e devolve o meio dele. Com uma tela so,
+    o centro dela.
     """
     if len(telas) < 2:
         return telas[0].t.copy()
     bordas = []
     for tl in telas[:2]:
-        w = tl.w_m / 2
-        bordas.append(tl.para_mundo(np.array([(-w, 0.0, 0.0), (w, 0.0, 0.0)])))
+        w, h = tl.w_m / 2, tl.h_m / 2
+        bordas.append(tl.para_mundo(np.array([(-w, 0.0, 0.0), (w, 0.0, 0.0),
+                                              (0.0, -h, 0.0), (0.0, h, 0.0)])))
     d = [(np.linalg.norm(a - b), a, b) for a in bordas[0] for b in bordas[1]]
     _dist, a, b = min(d, key=lambda item: item[0])
     return (a + b) / 2
@@ -127,22 +146,39 @@ def build_sala(telas):
     objs += scn._cubo(c2, 0.10, scn.CUBES[1][0], -0.15, -0.30)
     p3 = _atras_da_juncao(telas, 0.85)
     objs += _pilar((p3[0], p3[2]), y0, 0.30, 0.08, scn.CUBES[2][0], 0.4)
-    # Pilares de referencia, um atras de cada tela.
-    objs += _pilar((x0 + 0.40, -0.65), y0, 0.25, 0.06, (150, 150, 150), 0.2)
-    objs += _pilar((x1 - 0.35, -0.35), y0, 0.25, 0.06, (150, 150, 150), -0.3)
+    # Pilares de referencia, um atras de cada tela, no raio do olho nominal.
+    for k, tl in enumerate(telas[:2]):
+        d = tl.t - OLHO_NOMINAL
+        p = tl.t + d / np.linalg.norm(d) * 0.55
+        objs += _pilar((p[0], p[2]), y0, 0.25, 0.06, (150, 150, 150), 0.2 - 0.5 * k)
 
     # Varetas cruzando a juncao, na frente dos cubos.
-    objs += _vareta((x0 + 0.30, -0.05, -0.10), (x1 - 0.10, -0.05, -0.10), VARETAS[0], 8)
-    objs += _vareta((x0 + 0.30, 0.07, -0.35), (x1 - 0.10, 0.07, -0.35), VARETAS[1], 8)
-    objs += _vareta((x0 + 0.30, -0.10, -0.15), (x1 - 0.10, 0.15, -0.60), VARETAS[2], 8)
+    zr = z_referencia(telas)
+    for (a, b), cor in zip(_varetas_sala(telas, zr), VARETAS):
+        objs += _vareta(a, b, cor, 8)
     return objs
+
+
+def _varetas_sala(telas, zr):
+    """As tres varetas da sala, horizontais (telas lado a lado) ou verticais."""
+    x0, x1, y0, y1, _z0, _z1 = limites(telas)
+    if lado_a_lado(telas):
+        return [((x0 + 0.30, -0.05, zr - 0.10), (x1 - 0.10, -0.05, zr - 0.10)),
+                ((x0 + 0.30, 0.07, zr - 0.35), (x1 - 0.10, 0.07, zr - 0.35)),
+                ((x0 + 0.30, -0.10, zr - 0.15), (x1 - 0.10, 0.15, zr - 0.60))]
+    j = juncao(telas)
+    return [((j[0] - 0.05, y0 + 0.05, zr - 0.10), (j[0] - 0.05, y1 - 0.05, zr - 0.10)),
+            ((j[0] + 0.07, y0 + 0.05, zr - 0.35), (j[0] + 0.07, y1 - 0.05, zr - 0.35)),
+            ((j[0] - 0.10, y0 + 0.05, zr - 0.15), (j[0] + 0.15, y1 - 0.05, zr - 0.60))]
 
 
 def dinamico_sala(t, telas):
     """Um cubo que vai e volta de tras de uma tela para tras da outra."""
-    j = juncao(telas)
+    base = _atras_da_juncao(telas, 0.45)
+    u = (telas[1].t - telas[0].t) if len(telas) > 1 else np.array([1.0, 0, 0])
+    u = u / max(np.linalg.norm(u), 1e-9)
     s = np.sin(t * 0.45)
-    centro = np.array([j[0] + 0.30 * s, -0.02, -0.40 + 0.05 * np.cos(t * 0.45)])
+    centro = base + 0.30 * s * u + np.array([0.0, 0.0, 0.05 * np.cos(t * 0.45)])
     return scn._cubo(centro, 0.06, (60, 200, 255), 0.4 * t, 0.7 * t)
 
 
@@ -153,16 +189,29 @@ def varetas_alinhamento(telas):
     espalhamento vertical crescendo com a profundidade para continuarem dentro
     do campo de visao das telas.
     """
-    x0, x1, _y0, _y1, _z0, _z1 = limites(telas)
-    xa, xb = x0 + 0.25, x1 - 0.05
+    x0, x1, y0, y1, _z0, _z1 = limites(telas)
+    zr = z_referencia(telas)
+    j = juncao(telas)
+    horizontal = lado_a_lado(telas)
+    if horizontal:
+        a0, a1, centro = x0 + 0.25, x1 - 0.05, j[1]
+    else:
+        a0, a1, centro = y0 + 0.05, y1 - 0.05, j[0]
+
+    def ponto(ao_longo, desvio, z):
+        if horizontal:
+            return (ao_longo, centro + desvio, z)
+        return (centro + desvio, ao_longo, z)
+
     varetas = []
-    for k, z in enumerate([-0.02, -0.30, -0.90]):
+    for k, dz in enumerate([0.02, 0.30, 0.90]):
+        z = zr - dz
         abre = (OLHO_NOMINAL[2] - z) / OLHO_NOMINAL[2]
         cor = VARETAS[k]
-        for y in (-0.06, 0.0, 0.06):
-            varetas.append(((xa, y * abre, z), (xb, y * abre, z), cor))
-        varetas.append(((xa, -0.08 * abre, z), (xb, 0.08 * abre, z), VARETAS[3 + k]))
-        varetas.append(((xa, 0.08 * abre, z), (xb, -0.08 * abre, z), VARETAS[3 + k]))
+        for off in (-0.06, 0.0, 0.06):
+            varetas.append((ponto(a0, off * abre, z), ponto(a1, off * abre, z), cor))
+        varetas.append((ponto(a0, -0.08 * abre, z), ponto(a1, 0.08 * abre, z), VARETAS[3 + k]))
+        varetas.append((ponto(a0, 0.08 * abre, z), ponto(a1, -0.08 * abre, z), VARETAS[3 + k]))
     return varetas
 
 

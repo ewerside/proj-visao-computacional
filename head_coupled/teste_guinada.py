@@ -10,7 +10,10 @@ tabela mostra essa previsao na coluna "pescoco" para comparar.
 
 Uso ao vivo:
     python teste_guinada.py
+  CLIQUE NA JANELA "teste de guinada" antes de usar as teclas (senao elas vao
+  para o terminal).
   ESPACO comeca/para a gravacao (ao parar, imprime a tabela e grava um CSV)
+  m      imprime o eixo entre os olhos do quadro atual (diagnostico)
   q sai
 
 Uso com video gravado (mesma resolucao da calibracao):
@@ -24,20 +27,24 @@ PROTOCOLO (10 minutos, notebook com focal.json valido)
     (20 e 30 graus vistos de 60 cm), e dois iguais a esquerda.
  2. Rode `python teste_guinada.py` e olhe o centro da tela: os dois Z devem
     coincidir (diferenca < 0.5 cm), porque de frente k = 1.
- 3. ESPACO. Sem mexer o tronco, aponte o NARIZ para o post-it de 20 graus,
-    segure 2 s; para o de 30, segure 2 s; volte ao centro 2 s. Mesmo para a
-    esquerda. Repita duas vezes. ESPACO de novo imprime a tabela e grava o CSV.
- 4. Arraste a cadeira ~15 cm para a direita e repita o passo 3. E o caso que
-    mais pesa com duas telas: cabeca fora do eixo da camera E virada para longe
-    dela. Sem correcao o erro aqui passa de 20 cm a 30 graus.
+ 3. ESPACO. Comece com o nariz RETO PARA A FRENTE (perpendicular a tela),
+    2 s. Sem mexer o tronco, aponte o NARIZ para o post-it de 20 graus,
+    segure 2 s; para o de 30, segure 2 s; volte reto para a frente 2 s. Mesmo
+    para a esquerda. Repita duas vezes e termine reto para a frente, 2 s. ESPACO
+    de novo imprime a tabela e grava o CSV.
+ 4. Arraste a cadeira ~15 cm para a direita e repita o passo 3, sempre com o
+    "reto para a frente" (perpendicular a tela, NAO apontando para o centro
+    dela). E o caso que mais pesa com duas telas: cabeca fora do eixo da camera
+    E virada para longe dela. Sem correcao o erro aqui passa de 20 cm a 30 graus.
  5. Leitura: "OK" = a correcao removeu 60% ou mais do erro. Na cabeca
     sintetica ela removeu 61 a 100% entre 17 e 35 graus de guinada medida.
     - "corrige demais" ou Z corrigido CAINDO com a guinada: convencao do eixo
-      errada. Imprima a matriz de frente: a rotacao deve ser quase a identidade
-      e matriz[2, 3] negativo (camera olhando para -z). Confira os sinais em
-      tracking.eixo_interocular.
+      errada. Olhando reto para a frente, aperte m: o eixo deve sair perto de
+      (1, 0, 0) ou (-1, 0, 0); virando para a direita, o terceiro numero deve
+      mudar de sinal em relacao a virar para a esquerda. Mande a saida.
     - "PARCIAL"/"FALHOU" sem corrigir demais: a guinada da matriz esta saindo
-      pequena demais; teste o eixo do solvePnP (opcional_pnp.py).
+      pequena demais. Mande a tabela e o CSV; a correcao pode ser desligada no
+      main.py com a tecla y (ou CORRIGIR_GUINADA = False no config.py).
 """
 
 import sys
@@ -63,7 +70,7 @@ def medir(landmarker, frame, t_ms, f_px):
     corrigido = tracking.head_position(pts, frame.shape, f_px, eixo)
     _ipd, mid = tracking.ipd_and_midpoint(pts[tracking.IRIS_L], pts[tracking.IRIS_R])
     k = tracking.fator_escorco(eixo, mid, frame.shape, f_px)
-    return {"guinada": tracking.guinada_graus(eixo), "k": k,
+    return {"guinada": tracking.guinada_graus(eixo), "k": k, "eixo": eixo,
             "X_ant": antigo[0], "Z_ant": antigo[2],
             "X_cor": corrigido[0], "Z_cor": corrigido[2]}
 
@@ -75,10 +82,19 @@ def tabela(linhas):
     zc = np.array([l_["Z_cor"] for l_ in linhas]) * 100
     xc = np.array([l_["X_cor"] for l_ in linhas]) * 100
     centro = np.abs(g) < 2.5
+    aviso = None
     if centro.sum() < 5:
-        return "poucos frames de frente (|guinada| < 2.5 graus): olhe reto para a tela tambem"
+        if len(g) < 5:
+            return "poucos frames gravados: grave por mais tempo"
+        # Sem quadros de frente suficientes: usa os 5 de menor guinada.
+        centro = np.zeros(len(g), bool)
+        centro[np.argsort(np.abs(g))[:5]] = True
+        aviso = (f"AVISO: poucos frames de frente (|guinada| < 2.5 graus); usei os 5 de "
+                 f"menor guinada ({np.abs(g[centro]).max():.1f} graus) como referencia. "
+                 "Olhe reto para a frente no inicio e no fim de cada rodada.")
     za0, zc0 = np.median(za[centro]), np.median(zc[centro])
-    out = [f"{len(g)} frames.  De frente: Z sem correcao {za0:.1f} cm, com correcao {zc0:.1f} cm",
+    out = ([aviso] if aviso else []) + [
+           f"{len(g)} frames.  De frente: Z sem correcao {za0:.1f} cm, com correcao {zc0:.1f} cm",
            "",
            " faixa (graus) |   n | guinada | dZ sem corr | dZ com corr | pescoco | X com corr",
            "---------------+-----+---------+-------------+-------------+---------+-----------"]
@@ -145,25 +161,39 @@ def hud(frame, m, gravando, n):
 
 
 def ao_vivo():
+    import monitores
     cap = tracking.open_camera()
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     f_px = tracking.load_calibration(w, h)
     landmarker = tracking.make_landmarker()
     clock = tracking.Clock()
-    linhas, gravando = [], False
+    linhas, gravando, focada = [], False, False
+    print("Clique na janela 'teste de guinada' antes de apertar as teclas.")
     while True:
         frame = tracking.read_frame(cap)
         if frame is None:
             break
-        m = medir(landmarker, frame, clock.now_ms(), f_px)
+        t_ms = clock.now_ms()
+        m = medir(landmarker, frame, t_ms, f_px)
         if gravando and m is not None:
             linhas.append(m)
         hud(frame, m, gravando, len(linhas))
         cv2.imshow(JANELA, frame)
         tecla = cv2.waitKey(1) & 0xFF
+        if not focada:
+            # Sem isso o foco fica no terminal e o waitKey nao ve tecla nenhuma.
+            monitores.focar_janela(JANELA)
+            focada = True
         if tecla == ord("q"):
             break
+        if tecla == ord("m"):
+            if m is None:
+                print("m: sem rosto ou sem a matriz do MediaPipe neste quadro")
+            else:
+                print(f"m: eixo entre os olhos (imagem: x dir, y baixo, z fundo) = "
+                      f"{np.round(m['eixo'], 3).tolist()}, "
+                      f"guinada {m['guinada']:+.1f} graus, k {m['k']:.3f}")
         if tecla == ord(" "):
             if gravando and linhas:
                 print(tabela(linhas))
@@ -178,6 +208,8 @@ def ao_vivo():
 
 def de_video(caminho, f_px=None, janela=True, espelhar=True):
     cap = cv2.VideoCapture(caminho)
+    if not cap.isOpened():
+        raise SystemExit(f"nao consegui abrir o video {caminho!r}")
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
@@ -209,6 +241,9 @@ def de_video(caminho, f_px=None, janela=True, espelhar=True):
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    if args and args[0] in ("-h", "--help"):
+        print(__doc__)
+        sys.exit(0)
     if not args:
         ao_vivo()
     else:
