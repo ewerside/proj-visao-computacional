@@ -24,6 +24,19 @@ def _poly(verts, color, th=2, fill=None):
             "th": th, "fill": fill}
 
 
+def _dims(dims):
+    """(largura, altura) da tela em metros. None e a tela do config (AP1).
+
+    Todo cenario de caixa tem a boca igual ao retangulo da tela. Com uma tela so
+    esse retangulo e o do config; com varias, cada tela tem a sua caixa, do
+    tamanho dela. Por isso as medidas viram parametro, com o config de padrao:
+    sem passar dims nada muda, nem um bit.
+    """
+    if dims is None:
+        return config.SCREEN_W, config.SCREEN_H
+    return dims
+
+
 def wall_grid(c00, c10, c11, c01, n, color):
     """Grid de linhas numa parede plana definida por 4 cantos, em ordem.
 
@@ -40,7 +53,7 @@ def wall_grid(c00, c10, c11, c01, n, color):
     return segs
 
 
-def make_room(d=None, n=None, com_fundo=True):
+def make_room(d=None, n=None, com_fundo=True, dims=None):
     """A caixa: frente aberta no plano da tela, fundo em -d, 4 paredes.
 
     Esta e a concha que TODOS os cenarios usam, e a razao e a unica coisa que faz
@@ -51,8 +64,12 @@ def make_room(d=None, n=None, com_fundo=True):
     Cenario que flutua sem nada em z=0 nao tem essa ancora: a imagem inteira
     desliza junto com a cabeca, e deslizar numa tela plana le como figura
     escorregando, nao como janela.
+
+    `dims` e (largura, altura) da tela dona da caixa, no referencial LOCAL dela;
+    None usa a tela do config.
     """
-    w, h = config.SCREEN_W / 2, config.SCREEN_H / 2
+    largura, altura = _dims(dims)
+    w, h = largura / 2, altura / 2
     d = config.BOX_DEPTH if d is None else d
     n = config.GRID_N if n is None else n
 
@@ -83,9 +100,13 @@ def make_cube(center, size, color):
     return [_poly(v[list(f)], color) for f in faces]
 
 
-def build_caixa():
-    """A cena inteira: a caixa mais tres cubos flutuando em profundidades diferentes."""
-    scene = make_room()
+def build_caixa(dims=None):
+    """A cena inteira: a caixa mais tres cubos flutuando em profundidades diferentes.
+
+    Os cubos ficam em metros fixos, centrados: numa tela maior a caixa alarga e
+    os cubos continuam do mesmo tamanho, no meio dela.
+    """
+    scene = make_room(dims=dims)
     d = config.BOX_DEPTH
     # Os tres numeros sao FRACOES da profundidade da caixa: 22%, 52% e 84%.
     # Antes eles vinham multiplicados por d/0.5, o que dobrava a fracao e punha
@@ -101,7 +122,7 @@ def build_caixa():
     return scene
 
 
-def project(P, eye, px_w, px_h):
+def project(P, eye, px_w, px_h, dims=None):
     """Projeta pontos 3D no plano da tela e converte para pixels.
 
     P: (N,3) em metros, referencial da tela. eye: (3,). Retorna (N,2) em pixels.
@@ -116,14 +137,19 @@ def project(P, eye, px_w, px_h):
     propria tela e o plano de imagem. Nao ha matriz de projecao nem espaco de
     recorte porque nao precisamos deles: projetamos no plano fisico e ja saimos
     em pixels. E a mesma geometria da camera de furo do tracking, invertida.
+
+    P e eye estao no referencial LOCAL da tela. `dims` e (largura, altura) dela
+    em metros; None usa o config. Para varias telas, telas.projetar() faz a
+    troca de base do mundo para o local e chama esta mesma funcao.
     """
     P = np.asarray(P, float)
     t = eye[2] / (eye[2] - P[:, 2])
     x = eye[0] + t * (P[:, 0] - eye[0])
     y = eye[1] + t * (P[:, 1] - eye[1])
 
-    px = (x / config.SCREEN_W + 0.5) * px_w
-    py = (0.5 - y / config.SCREEN_H) * px_h
+    largura, altura = _dims(dims)
+    px = (x / largura + 0.5) * px_w
+    py = (0.5 - y / altura) * px_h
     return np.stack([px, py], axis=1)
 
 
@@ -132,7 +158,7 @@ def z_minimo(objs):
     return min((float(o["v"][:, 2].min()) for o in objs), default=0.0)
 
 
-def paralaxe_px(eye, z_min, px_w, theta=0.0, escala=None):
+def paralaxe_px(eye, z_min, px_w, theta=0.0, escala=None, largura=None):
     """Maior disparidade horizontal entre os dois olhos, em pixels.
 
     Nao precisa projetar a cena duas vezes para achar isso. Subtraindo as duas
@@ -154,7 +180,8 @@ def paralaxe_px(eye, z_min, px_w, theta=0.0, escala=None):
     escala = config.STEREO_SCALE if escala is None else escala
     meia = (config.IPD_REAL / 2.0) * escala
     dx = 2.0 * meia * np.cos(theta) * (-z_min) / (eye[2] - z_min)
-    return abs(dx) / config.SCREEN_W * px_w
+    largura = config.SCREEN_W if largura is None else largura
+    return abs(dx) / largura * px_w
 
 
 def escala_confortavel(eye, z_min, max_deg=None):
@@ -235,7 +262,7 @@ def stereo_eyes(eye_c, theta=0.0, escala=None):
     return eye_c - d, eye_c + d
 
 
-def order_faces(scene, eye):
+def order_faces(scene, eye, descartar_atras=True):
     """Ordena a cena para o painter's algorithm: de tras para frente.
 
     Devolve a lista de objetos ja filtrada e ordenada, pronta para o render.
@@ -254,6 +281,13 @@ def order_faces(scene, eye):
       - back-face culling: a face some se a normal aponta para longe do olho.
         Corta quase metade do trabalho num solido fechado e ainda elimina os
         artefatos do painter's algorithm entre faces do mesmo objeto.
+
+    Com varias telas a ordem e calculada no MUNDO, uma vez, com o olho
+    ciclopico, e serve a todas as telas: distancia e produto escalar nao mudam
+    com a troca de referencial, entao a oclusao concorda dos dois lados do
+    bezel pelo mesmo motivo que concorda entre os dois olhos do estereo. Ai o
+    descarte por z abaixo nao faz sentido (o z e o de UMA tela) e vai desligado
+    com descartar_atras=False: quem protege a projecao e o recorte de cada tela.
     """
     eye = np.asarray(eye, float)
 
@@ -262,7 +296,7 @@ def order_faces(scene, eye):
         v = obj["v"]
         # Descarta o que estiver atras do olho. Com o olho em z>0 e a cena em
         # z<=0 isso nunca dispara, mas uma falha de tracking pode inverter.
-        if np.any(v[:, 2] >= eye[2]):
+        if descartar_atras and np.any(v[:, 2] >= eye[2]):
             continue
         centro = v.mean(axis=0)
         n = obj.get("n")
@@ -273,7 +307,7 @@ def order_faces(scene, eye):
     return [obj for _dist, obj in ordenado]
 
 
-def render(eye, face_order, out, fundo=None, paleta=None):
+def render(eye, face_order, out, fundo=None, paleta=None, dims=None):
     """Desenha em `out` a cena ja ordenada, vista de `eye`. So a cena.
 
     Sem HUD, sem overlay, sem estado: mesma entrada, mesma imagem. E o que
@@ -303,30 +337,67 @@ def render(eye, face_order, out, fundo=None, paleta=None):
         np.copyto(out, fundo)
 
     for obj in face_order:
-        pts = project(obj["v"], eye, px_w, px_h).astype(np.int32)
-        cor_obj = obj["color"] if paleta is None else paleta[obj["color"]]
-        if obj["kind"] == "seg":
-            cv2.line(out, tuple(pts[0]), tuple(pts[1]), cor_obj, obj["th"],
-                     cv2.LINE_AA)
-            continue
-
-        n = obj.get("n")
-        if n is not None:
-            # Aresta na mesma cor do preenchimento: fecha a costura que o
-            # antialias deixa entre faces vizinhas, e da o acabamento liso de
-            # low poly em vez de wireframe colorido.
-            cor = sombrear(cor_obj, n)
-            cv2.fillPoly(out, [pts], cor, cv2.LINE_AA)
-            cv2.polylines(out, [pts], True, cor, 1, cv2.LINE_AA)
-        else:
-            fill = obj.get("fill")
-            if not fill:
-                fill = tuple(c * 0.30 for c in cor_obj)
-            elif paleta is not None:
-                fill = paleta[fill]
-            cv2.fillPoly(out, [pts], fill, cv2.LINE_AA)
-            cv2.polylines(out, [pts], True, cor_obj, obj["th"], cv2.LINE_AA)
+        pts = pixels_inteiros(project(obj["v"], eye, px_w, px_h, dims), px_w, px_h)
+        desenhar(out, obj, pts, paleta, cv2)
     return out
+
+
+# Faixa de seguranca das coordenadas, em multiplos do maior lado do canvas.
+# Nas cenas do projeto a maior coordenada medida foi ~7.500 px (4x a largura),
+# entao nada que e desenhado de verdade chega perto do limite.
+LIMITE_PX = 8
+
+
+def pixels_inteiros(P, px_w, px_h):
+    """Pixels float -> int32 para o OpenCV, sem as duas armadilhas da conversao.
+
+    1. NaN, inf ou valor fora do int32 viram -2147483648 no astype do numpy,
+       sem erro nenhum. Um vertice assim faz o fillPoly varrer 2 bilhoes de
+       linhas: medido, ~20 s travado por poligono.
+    2. Mesmo dentro do int32, o fillPoly percorre as linhas desde o vertice
+       mais alto, entao o custo cresce com a distancia dele acima da imagem.
+
+    A faixa [-LIMITE_PX, +LIMITE_PX] larguras resolve as duas. Dentro dela
+    (todo caso normal) o resultado e identico ao astype puro.
+    """
+    lim = float(LIMITE_PX * max(px_w, px_h))
+    P = np.nan_to_num(P, nan=-lim, posinf=lim, neginf=-lim)
+    return np.clip(P, -lim, lim).astype(np.int32)
+
+
+def desenhar(out, obj, pts, paleta=None, cv2=None):
+    """Desenha UM objeto ja projetado (pts em pixels inteiros) em `out`.
+
+    E o corpo do laco do render, separado para o render de varias telas
+    (telas.render_tela) desenhar exatamente igual: mesma cor, mesmo
+    antialias, mesmo sombreamento. A normal "n" esta no referencial em que a
+    cena foi construida (o MUNDO, no caso compartilhado), entao a cor de uma
+    face nao depende da tela em que ela cai.
+    """
+    if cv2 is None:
+        import cv2
+    cor_obj = obj["color"] if paleta is None else paleta[obj["color"]]
+    if obj["kind"] == "seg":
+        cv2.line(out, tuple(pts[0]), tuple(pts[1]), cor_obj, obj["th"],
+                 cv2.LINE_AA)
+        return
+
+    n = obj.get("n")
+    if n is not None:
+        # Aresta na mesma cor do preenchimento: fecha a costura que o
+        # antialias deixa entre faces vizinhas, e da o acabamento liso de
+        # low poly em vez de wireframe colorido.
+        cor = sombrear(cor_obj, n)
+        cv2.fillPoly(out, [pts], cor, cv2.LINE_AA)
+        cv2.polylines(out, [pts], True, cor, 1, cv2.LINE_AA)
+    else:
+        fill = obj.get("fill")
+        if not fill:
+            fill = tuple(c * 0.30 for c in cor_obj)
+        elif paleta is not None:
+            fill = paleta[fill]
+        cv2.fillPoly(out, [pts], fill, cv2.LINE_AA)
+        cv2.polylines(out, [pts], True, cor_obj, obj["th"], cv2.LINE_AA)
 
 
 # ---------------------------------------------------------------- corredor ---
@@ -340,10 +411,12 @@ TOCHA_DENTRO = (120, 225, 255)   # amarelo palido
 TOCHA_HALO = (0, 26, 56)         # laranja quase preto, faz as vezes de brilho
 
 
-def build_corredor():
+def build_corredor(dims=None):
     """Caixa funda sem parede no fundo: as linhas convergem e somem no preto."""
-    w, h = config.SCREEN_W / 2, config.SCREEN_H / 2
-    segs = make_room(d=config.COR_DEPTH, n=config.COR_DIVISOES, com_fundo=False)
+    largura, altura = _dims(dims)
+    w, h = largura / 2, altura / 2
+    segs = make_room(d=config.COR_DEPTH, n=config.COR_DIVISOES, com_fundo=False,
+                     dims=dims)
 
     for z_tocha in config.TOCHA_Z:
         for lado in (-1, 1):
@@ -366,14 +439,14 @@ def _chama(x, y, z, escala, cor):
     return _poly(v, cor, th=1, fill=cor)
 
 
-def tochas_corredor(t):
+def tochas_corredor(t, dims=None):
     """As chamas, reconstruidas a cada frame para tremular.
 
     O tremor vem da soma de tres senoides de frequencias incomensuraveis, o que
     da um padrao que nunca se repete de forma perceptivel sem precisar de random,
     e portanto continua deterministico e reproduzivel entre execucoes.
     """
-    w = config.SCREEN_W / 2
+    w = _dims(dims)[0] / 2
     objs = []
     for i, z_tocha in enumerate(config.TOCHA_Z):
         for j, lado in enumerate((-1, 1)):
@@ -485,7 +558,7 @@ def _anel(raio, y, n=8, giro=0.0):
 PISO_Y = -config.SCREEN_H / 2
 
 
-def _piso():
+def _piso(dims=None):
     """Chao ladrilhado da caixa.
 
     Ladrilhado, e nao um poligono unico, por causa do algoritmo do pintor: a
@@ -493,17 +566,19 @@ def _piso():
     fundo ficaria ordenada atras do piso todo e sumiria. Cada ladrilho ordena
     junto do que esta em cima dele.
     """
-    w, d = config.SCREEN_W / 2, config.MINI_DEPTH
+    largura, altura = _dims(dims)
+    w, d = largura / 2, config.MINI_DEPTH
+    piso_y = -altura / 2
     nx, nz = 6, 9
     faces = []
-    abaixo = np.array([0.0, PISO_Y - 0.05, -d / 2])
+    abaixo = np.array([0.0, piso_y - 0.05, -d / 2])
     for i in range(nx):
         for k in range(nz):
             x0, x1 = -w + 2 * w * i / nx, -w + 2 * w * (i + 1) / nx
             z0, z1 = -d * k / nz, -d * (k + 1) / nz
             cor = PISO_A if (i + k) % 2 == 0 else PISO_B
-            faces.append(_face([(x0, PISO_Y, z0), (x1, PISO_Y, z0),
-                                (x1, PISO_Y, z1), (x0, PISO_Y, z1)],
+            faces.append(_face([(x0, piso_y, z0), (x1, piso_y, z0),
+                                (x1, piso_y, z1), (x0, piso_y, z1)],
                                cor, dentro=abaixo))
     return faces
 
@@ -556,10 +631,10 @@ def _moinho(pos, yaw):
     return faces
 
 
-def _sombra(pos, raio):
+def _sombra(pos, raio, piso_y=PISO_Y):
     """Mancha de sombra no chao. Poligono chato, sem projecao de luz calculada."""
-    v = _anel(raio, 0.0, 8) + np.array([pos[0], PISO_Y + 0.0008, pos[2]])
-    return _face(v, SOMBRA, dentro=np.array([pos[0], PISO_Y - 0.05, pos[2]]),
+    v = _anel(raio, 0.0, 8) + np.array([pos[0], piso_y + 0.0008, pos[2]])
+    return _face(v, SOMBRA, dentro=np.array([pos[0], piso_y - 0.05, pos[2]]),
                  cull=False)
 
 
@@ -605,25 +680,30 @@ _ARVORES = [((-0.058, -0.19), 0.060), ((0.128, -0.46), 0.050),
 _MOINHO = ((0.125, -0.17), -0.6)
 
 
-def build_miniatura():
-    """Vilarejo assentado no chao da caixa padrao."""
-    faces = make_room(d=config.MINI_DEPTH, n=config.MINI_DIVISOES)
-    faces += _piso()
+def build_miniatura(dims=None):
+    """Vilarejo assentado no chao da caixa padrao.
+
+    O vilarejo fica em metros fixos, centrado; so a caixa e o chao acompanham
+    `dims`. O chao desce junto com a borda de baixo da tela.
+    """
+    piso_y = -_dims(dims)[1] / 2
+    faces = make_room(d=config.MINI_DEPTH, n=config.MINI_DIVISOES, dims=dims)
+    faces += _piso(dims)
     for (x, z), yaw, lg, al, pr in _CASAS:
-        pos = np.array([x, PISO_Y + al / 2, z])
+        pos = np.array([x, piso_y + al / 2, z])
         faces += _casa(pos, yaw, lg, al, pr)
-        faces.append(_sombra((x, 0, z), max(lg, pr) * 0.60))
+        faces.append(_sombra((x, 0, z), max(lg, pr) * 0.60, piso_y))
     for (x, z), altura in _ARVORES:
-        faces += _arvore(np.array([x, PISO_Y, z]), altura)
-        faces.append(_sombra((x, 0, z), 0.014))
-    faces += _moinho(np.array([_MOINHO[0][0], PISO_Y, _MOINHO[0][1]]), _MOINHO[1])
-    faces.append(_sombra((_MOINHO[0][0], 0, _MOINHO[0][1]), 0.017))
+        faces += _arvore(np.array([x, piso_y, z]), altura)
+        faces.append(_sombra((x, 0, z), 0.014, piso_y))
+    faces += _moinho(np.array([_MOINHO[0][0], piso_y, _MOINHO[0][1]]), _MOINHO[1])
+    faces.append(_sombra((_MOINHO[0][0], 0, _MOINHO[0][1]), 0.017, piso_y))
     return faces
 
 
-def _pas_moinho(t):
+def _pas_moinho(t, piso_y=PISO_Y):
     """As quatro pas girando. Faces sem culling, porque sao chapas finas."""
-    pos = np.array([_MOINHO[0][0], PISO_Y + 0.066, _MOINHO[0][1]])
+    pos = np.array([_MOINHO[0][0], piso_y + 0.066, _MOINHO[0][1]])
     ang0 = t * 1.4
     faces = []
     for k in range(4):
@@ -638,17 +718,18 @@ def _pas_moinho(t):
     return faces
 
 
-def miniatura_dinamico(t):
+def miniatura_dinamico(t, dims=None):
     """Bonecos andando e pas do moinho, reconstruidos a cada frame."""
-    objs = _pas_moinho(t)
+    piso_y = -_dims(dims)[1] / 2
+    objs = _pas_moinho(t, piso_y)
     for i, (rx, rz, vel, fase0) in enumerate(ORBITAS):
         ang = fase0 + vel * t
         pos = ORBITA_CENTRO + np.array([rx * np.cos(ang), 0.0, rz * np.sin(ang)])
-        pos[1] = PISO_Y
+        pos[1] = piso_y
         # Olha para onde anda: a tangente da elipse.
         rumo = np.arctan2(rz * np.cos(ang) * vel, -rx * np.sin(ang) * vel)
         roupa, calca = ROUPAS[i % len(ROUPAS)]
-        objs.append(_sombra((pos[0], 0, pos[2]), 0.007))
+        objs.append(_sombra((pos[0], 0, pos[2]), 0.007, piso_y))
         objs += _boneco(pos, rumo, t * abs(vel) * 13.0 + fase0 * 3.0, roupa, calca)
     return objs
 
@@ -656,26 +737,29 @@ def miniatura_dinamico(t):
 CENAS = ["caixa", "corredor", "miniatura", "barras"]
 
 
-def build(nome):
-    """Parte estatica da cena, construida uma vez."""
+def build(nome, dims=None):
+    """Parte estatica da cena, construida uma vez, no referencial da tela dona.
+
+    `dims` e (largura, altura) dessa tela em metros; None usa o config (AP1).
+    """
     if nome == "caixa":
-        return build_caixa()
+        return build_caixa(dims)
     if nome == "corredor":
-        return build_corredor()
+        return build_corredor(dims)
     if nome == "barras":
-        return build_barras()
-    return build_miniatura()
+        return build_barras(dims)
+    return build_miniatura(dims)
 
 
-def dinamico(nome, t):
+def dinamico(nome, t, dims=None):
     """Parte que muda a cada frame. Vazia na caixa."""
     if nome == "caixa":
         return []
     if nome == "corredor":
-        return tochas_corredor(t)
+        return tochas_corredor(t, dims)
     if nome == "barras":
-        return barras_dinamico(t)
-    return miniatura_dinamico(t)
+        return barras_dinamico(t, dims)
+    return miniatura_dinamico(t, dims)
 
 
 def fundo(nome, largura, altura):
@@ -745,7 +829,7 @@ MAO_DIR = np.array([0.60, 0.50, 0.62])
 MAO_DIR = MAO_DIR / np.linalg.norm(MAO_DIR)
 
 
-def _barras():
+def _barras(dims=None):
     """Barras verticais exatamente em z=0, o plano da tela.
 
     Divididas em segmentos verticais de proposito. O algoritmo do pintor ordena
@@ -753,7 +837,8 @@ def _barras():
     usando a distancia do meio dela. Segmentada, a comparacao vira local e a
     oclusao acerta em cada altura.
     """
-    w, h = config.SCREEN_W / 2, config.SCREEN_H / 2
+    largura, altura = _dims(dims)
+    w, h = largura / 2, altura / 2
     n, meia = config.BARRAS_N, config.BARRAS_LARGURA / 2
     segs = config.BARRAS_SEGMENTOS
     objs = []
@@ -768,9 +853,9 @@ def _barras():
     return objs
 
 
-def build_barras():
+def build_barras(dims=None):
     """A caixa de sempre, mais a grade pregada no vidro."""
-    return make_room() + _barras()
+    return make_room(dims=dims) + _barras(dims)
 
 
 def _cubo(centro, lado, cor, ang_x, ang_y):
@@ -891,11 +976,15 @@ def _braco_e_mao(punho):
     return faces
 
 
-def barras_dinamico(t):
+def barras_dinamico(t, dims=None):
     """Dois cubos que ficam sempre atras, e o braco que atravessa a grade.
 
     Os cubos existem como controle: eles nunca saem de tras das barras, entao o
     olho tem contra o que comparar quando o braco passa por cima.
+
+    `dims` nao e usado: o braco e os cubos estao em metros fixos, centrados, e
+    cabem tambem numa tela maior. Fica na assinatura para dinamico() tratar os
+    quatro cenarios igual.
     """
     objs = []
     for i, cor in enumerate(CUBOS_FUNDO):

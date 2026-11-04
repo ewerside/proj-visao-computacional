@@ -30,6 +30,14 @@ IRIS_R = 473
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "face_landmarker.task")
 
+# Limites do fator de escorco k (ver fator_escorco). k = 0.5 e cabeca virada
+# 60 graus para longe da camera, alem do que o MediaPipe ainda acompanha bem.
+# Acima de 1 so acontece com a cabeca fora do eixo e virada PARA a camera
+# (k = 1/cos(phi)); 1.25 corresponde a borda do quadro. Fora disso a matriz
+# esta errada e preferimos limitar a correcao a deixar o Z disparar.
+K_MIN = 0.5
+K_MAX = 1.25
+
 
 def open_camera():
     """Abre a webcam ja com a exposicao automatica ligada e estabilizada.
@@ -74,6 +82,10 @@ def make_landmarker():
         base_options=mp_python.BaseOptions(model_asset_path=MODEL_PATH),
         running_mode=vision.RunningMode.VIDEO,
         num_faces=1,
+        # Pose 3D do rosto como matriz 4x4 (modelo canonico -> camera). Usamos
+        # so a rotacao, para corrigir o escorco do ipd_px (fator_escorco).
+        # Custo medido: nenhum, 11.9 ms por frame com a opcao e 12.1 ms sem.
+        output_facial_transformation_matrixes=True,
     )
     return vision.FaceLandmarker.create_from_options(options)
 
@@ -95,15 +107,103 @@ def read_frame(cap):
     return frame
 
 
-def find_landmarks(landmarker, frame, timestamp_ms):
-    """Retorna os 478 landmarks em pixels, array (478, 2), ou None se nao houver rosto."""
+def find_landmarks_pose(landmarker, frame, timestamp_ms):
+    """Landmarks e eixo interocular 3D da cabeca, do mesmo frame.
+
+    Retorna (pts, eixo): pts e o array (478, 2) em pixels e eixo e o vetor
+    unitario olho -> olho no referencial da IMAGEM (ver eixo_interocular).
+    Sem rosto devolve (None, None). Se o MediaPipe nao entregar a matriz
+    (opcao desligada, versao antiga), eixo vem None e o resto segue igual,
+    sem correcao.
+    """
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
     result = landmarker.detect_for_video(image, timestamp_ms)
     if not result.face_landmarks:
-        return None
+        return None, None
     h, w = frame.shape[:2]
-    return np.array([[p.x * w, p.y * h] for p in result.face_landmarks[0]])
+    pts = np.array([[p.x * w, p.y * h] for p in result.face_landmarks[0]])
+    eixo = None
+    matrizes = getattr(result, "facial_transformation_matrixes", None)
+    if matrizes:
+        eixo = eixo_interocular(np.asarray(matrizes[0], dtype=float))
+    return pts, eixo
+
+
+def find_landmarks(landmarker, frame, timestamp_ms):
+    """Retorna os 478 landmarks em pixels, array (478, 2), ou None se nao houver rosto."""
+    return find_landmarks_pose(landmarker, frame, timestamp_ms)[0]
+
+
+def eixo_interocular(matriz):
+    """Direcao olho -> olho da cabeca, unitaria, no referencial da IMAGEM.
+
+    Referencial da imagem: x para a direita, y para BAIXO, z para longe da
+    camera (profundidade). E o referencial dos pixels, por isso a conta do
+    fator_escorco pode usar u e v direto.
+
+    A matriz do MediaPipe leva o modelo canonico do rosto para um espaco
+    metrico no estilo OpenGL: x para a direita, y para CIMA, z saindo da imagem
+    na direcao de quem a olha (a camera olha para -z). O modelo canonico e
+    simetrico em x, entao o eixo x dele e exatamente a reta que liga os dois
+    olhos, e a primeira coluna da rotacao e essa direcao ja girada junto com a
+    cabeca. Trocar o sinal de y e de z passa do OpenGL para o referencial da
+    imagem.
+
+    So a ROTACAO e usada. A translacao da matriz supoe uma camera de 63 graus
+    de campo vertical e a nossa tem 41, entao a distancia dela sai errada.
+    A rotacao nao sofre com isso: medido em cabeca sintetica, o erro de guinada
+    e o mesmo renderizando com f = 586 px (63 graus) e com f = 970 px.
+
+    Espelhar o frame (FLIP_FRAME) nao muda nada: matriz e pixels vem da mesma
+    imagem e o fator_escorco so usa uma norma, que nao enxerga o sinal de x.
+    """
+    a = np.array([matriz[0, 0], -matriz[1, 0], -matriz[2, 0]], dtype=float)
+    return a / np.linalg.norm(a)
+
+
+def guinada_graus(eixo):
+    """Guinada da cabeca em graus, so para mostrar no overlay.
+
+    0 = rosto de frente para a tela. Positivo = rosto virado para o +x da
+    imagem, que com FLIP_FRAME e a direita da pessoa (o lado do monitor B se
+    ele estiver a direita). Nao entra em conta nenhuma: a correcao usa o eixo
+    inteiro, que tambem carrega a arfagem e a rolagem.
+    """
+    return float(np.degrees(np.arctan2(eixo[2], eixo[0])))
+
+
+def fator_escorco(eixo, mid_px, frame_shape, f_px):
+    """Quanto o ipd_px encolheu por causa da orientacao da cabeca. 1.0 = nada.
+
+    Os dois olhos estao em P -/+ d/2, com d = IPD_REAL * eixo. Projetando os
+    dois na camera pinhole e subtraindo:
+
+        ipd_px = f_px * IPD_REAL * k / Z,     k = | eixo_xy - eixo_z * n |
+
+    com n = ((u - cx) / f_px, (v - cy) / f_px), o ponto medio das irises na
+    imagem normalizado. A formula e EXATA, nao aproximacao de primeira ordem:
+    tirando n do ponto medio das duas projecoes, os termos de segunda ordem se
+    cancelam (conferido numericamente, erro relativo 1e-15 em 20 mil poses).
+    Por isso basta multiplicar o Z antigo por k, sem iteracao nenhuma.
+
+    Os dois termos de k:
+    - eixo_xy: o escorco da guinada propriamente dito. Guinada pura de psi graus
+      com a cabeca no eixo optico da k = cos(psi).
+    - eixo_z * n: a cabeca fora do eixo optico enxerga o segmento de vies. Com
+      a cabeca a direita da camera e virada para a direita, olhando a tela B,
+      os dois efeitos se somam: k = cos(psi + phi) / cos(phi), onde phi e o
+      angulo da cabeca visto da camera. Ignorar esse termo deixa 2 cm de erro
+      a 30 graus mesmo com a cabeca centrada, porque a camera fica 10 cm acima
+      dos olhos e a rotacao do pescoco leva os olhos 4 cm para o lado.
+
+    Arfagem e rolagem puras nao mudam k: o eixo continua paralelo a imagem.
+    """
+    h, w = frame_shape[:2]
+    nx = (mid_px[0] - w / 2.0) / f_px
+    ny = (mid_px[1] - h / 2.0) / f_px
+    k = float(np.hypot(eixo[0] - eixo[2] * nx, eixo[1] - eixo[2] * ny))
+    return min(max(k, K_MIN), K_MAX)
 
 
 def find_irises(landmarker, frame, timestamp_ms):
@@ -167,7 +267,7 @@ def load_calibration(frame_w, frame_h):
     return data["f_px"]
 
 
-def head_position(pts, frame_shape, f_px):
+def head_position(pts, frame_shape, f_px, eixo=None):
     """Posicao 3D metrica da cabeca no referencial da CAMERA, em metros.
 
     Modelo pinhole com a distancia interpupilar como segmento de comprimento
@@ -184,17 +284,32 @@ def head_position(pts, frame_shape, f_px):
 
     Assume o ponto principal no centro da imagem, o que e aproximacao: a rigor
     ele sai um pouco do centro e so uma calibracao completa com tabuleiro daria
-    o valor real. Assume tambem ipd_px medido sem guinada; virar a cabeca encolhe
-    ipd_px por cos(yaw) e infla o Z. Essa e a maior fonte de erro do sistema.
+    o valor real.
+
+    Guinada. Sem `eixo`, assume ipd_px medido sem guinada: virar a cabeca encolhe
+    ipd_px por ~cos(yaw) e infla o Z, +9 cm a 30 graus. Com duas telas isso
+    deixa de ser detalhe, porque olhar para a tela B E virar a cabeca. Passando
+    o `eixo` de find_landmarks_pose, o resultado inteiro e multiplicado por
+    k = fator_escorco(...): o Z porque Z = f_px * IPD * k / ipd_px, e X e Y
+    porque sao proporcionais a Z. A posicao corrigida desliza ao longo do mesmo
+    raio da camera; so a distancia muda. eixo=None e o comportamento antigo,
+    que e o lado "desligado" da comparacao A/B (tecla y no main.py).
     """
     h, w = frame_shape[:2]
     cx, cy = w / 2.0, h / 2.0
     ipd_px, (u, v) = ipd_and_midpoint(pts[IRIS_L], pts[IRIS_R])
+    if ipd_px < 1e-6:
+        # Irises no mesmo pixel: landmark degenerado. NaN em vez de
+        # ZeroDivisionError; o main.py descarta o quadro (np.isfinite).
+        return np.full(3, np.nan)
 
     Z = f_px * config.IPD_REAL / ipd_px
     X = (u - cx) * Z / f_px
     Y = -(v - cy) * Z / f_px
-    return np.array([X, Y, Z])
+    pos = np.array([X, Y, Z])
+    if eixo is not None:
+        pos *= fator_escorco(eixo, (u, v), frame_shape, f_px)
+    return pos
 
 
 def eye_in_screen_coords(head_cam):

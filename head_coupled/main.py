@@ -3,6 +3,7 @@
 Teclas:
   q ou ESC  sai
   f         liga/desliga o One Euro Filter (comparacao A/B)
+  y         liga/desliga a correcao de guinada no Z (comparacao A/B)
   d         liga/desliga o overlay de debug
   ESPACO    congela a posicao do olho e a rolagem
   n         troca de cenario (caixa / corredor / miniatura / barras)
@@ -19,9 +20,19 @@ Estereo:
   1 / 2     mostra so o olho esquerdo / so o olho direito (diagnostico)
   s         troca esquerdo com direito, se a profundidade sair invertida
   0         padrao de medicao de vazamento das lentes ([ e ] ajustam)
+
+Varias telas (AP2): com um telas.json ao lado deste arquivo (gerado pelo
+calibrar_telas.py, ver telas.py), abre uma janela fullscreen por tela, cada uma
+no seu monitor. Os cenarios do AP1 ganham uma caixa por tela, e a tecla n passa
+tambem pelos cenarios do mundo compartilhado (sala, alinhamento). Sem
+telas.json, ou com --uma-tela, e o AP1 de sempre, uma tela so.
+
+    python main.py                  usa o telas.json, se existir
+    python main.py --uma-tela       ignora o telas.json (modo AP1)
+    python main.py --telas outro.json
 """
 
-import ctypes
+import argparse
 import math
 import time
 from collections import deque
@@ -32,7 +43,10 @@ import numpy as np
 import anaglyph
 import config
 import filters
+import monitores
+import sala
 import scene as scn
+import telas as tls
 import tracking
 
 WINDOW = "head-coupled"
@@ -42,46 +56,95 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 HEAD_PADRAO = np.array([0.0, -config.CAM_OFFSET_Y, 0.60])
 
 
-def focar_janela():
-    """Traz a janela para frente e entrega o foco de teclado a ela.
+def _nome_janela(tela, i):
+    """Titulo ASCII e unico: o OpenCV cria a janela com CreateWindowExA."""
+    if i == 0:
+        return WINDOW
+    nome = tela.nome.encode("ascii", "ignore").decode() or f"tela{i}"
+    return f"{WINDOW} {i} {nome}"
 
-    Sem isso o foco continua no terminal que lancou o script e o cv2.waitKey
-    nunca ve tecla nenhuma: a janela fica em fullscreen sem responder nem ao q.
-    O toque no ALT antes do SetForegroundWindow contorna a trava de foreground
-    do Windows, que de outro modo recusa a troca de foco vinda de outro processo.
+
+def abrir_janelas(lista, multi):
+    """Abre uma janela em tela cheia por tela, cada uma no seu monitor.
+
+    Devolve (nomes, tamanhos). Os tamanhos sao os REAIS das janelas, nao os do
+    config nem os do telas.json: se o Windows estiver com escala diferente de
+    100% eles podem divergir. Como cada janela cobre a sua tela inteira, mapear
+    metros para fracao da janela continua correto de qualquer jeito.
+
+    Modo de uma tela (AP1): a janela vai para o monitor do notebook, que pode
+    nao ser o principal do Windows. Varias telas: cada tela do telas.json acha
+    o seu monitor pelo nome do dispositivo (monitores.achar_monitor). A janela
+    do notebook abre por ultimo, para ficar com o foco do teclado.
     """
-    try:
-        u = ctypes.windll.user32
-        hwnd = u.FindWindowW(None, WINDOW)
-        if hwnd:
-            u.keybd_event(0x12, 0, 0, 0)
-            u.SetForegroundWindow(hwnd)
-            u.keybd_event(0x12, 0, 2, 0)
-    except Exception:
-        pass
+    mons = monitores.listar_monitores()
+    if multi:
+        alvos = []
+        for tl in lista:
+            m = monitores.achar_monitor(mons, tl.monitor)
+            if m is None:
+                raise SystemExit(
+                    f"telas.json: nao achei o monitor da tela {tl.nome!r} "
+                    f"({tl.monitor}). Monitores agora: "
+                    + "; ".join(str(x) for x in mons)
+                    + ". Confira se o monitor esta ligado e em 'Estender' (Win+P), "
+                    "rode de novo o calibrar_telas.py, ou use --uma-tela.")
+            if (abs(m.largura / m.altura - tl.px_w / tl.px_h) > 0.01):
+                print(f"aviso: o monitor de {tl.nome!r} esta em {m.largura}x{m.altura}, "
+                      f"mas foi calibrado em {tl.px_w}x{tl.px_h}: proporcao diferente, "
+                      "a imagem sai distorcida. Volte a resolucao ou recalibre.")
+            alvos.append(m)
+        if len({id(m) for m in alvos}) != len(alvos):
+            raise SystemExit("telas.json: duas telas apontam para o mesmo monitor. "
+                             "Rode de novo o calibrar_telas.py mostrar.")
+    else:
+        alvos = [mons[monitores.escolher_notebook(mons)] if len(mons) > 1 else None]
+    nomes = [_nome_janela(tl, i) for i, tl in enumerate(lista)]
+    tamanhos = [None] * len(lista)
+    for i in reversed(range(len(lista))):
+        topo = i > 0 and config.MONITOR_SEMPRE_NO_TOPO
+        tamanhos[i] = monitores.abrir_tela_cheia(nomes[i], alvos[i], topo)
+        aviso = monitores.conferir_tamanho(nomes[i], *tamanhos[i], alvos[i])
+        if aviso:
+            print(aviso)
+    return nomes, tamanhos
 
 
-def abrir_janela():
-    """Abre em fullscreen, pega o foco e devolve o tamanho real em pixels.
+def construir(nome, lista):
+    """Parte estatica do cenario.
 
-    Usamos o tamanho real da janela, nao o do config: se o Windows estiver com
-    escala de DPI diferente de 100%, os dois divergem. Como a janela cobre a tela
-    inteira, mapear metros para fracao da janela continua correto de qualquer jeito.
+    Cenario do AP1: uma caixa POR TELA, com as medidas dela e no referencial
+    local dela, porque a boca de cada caixa tem que ser o retangulo da sua tela.
+    Cenario de sala.py: uma cena so, no mundo, atras de todas as telas.
     """
-    cv2.namedWindow(WINDOW, cv2.WINDOW_NORMAL)
-    cv2.setWindowProperty(WINDOW, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    cv2.imshow(WINDOW, np.zeros((config.SCREEN_PX_H, config.SCREEN_PX_W, 3), np.uint8))
-    cv2.waitKey(1)
-    focar_janela()
-    _x, _y, w, h = cv2.getWindowImageRect(WINDOW)
-    if w <= 0 or h <= 0:
-        w, h = config.SCREEN_PX_W, config.SCREEN_PX_H
-    return w, h
+    if nome in sala.CENAS_MUNDO:
+        return sala.build(nome, lista)
+    return [scn.build(nome, tl.dims) for tl in lista]
+
+
+def z_min_estaticos(nome, estatica, lista):
+    """Vertice mais fundo da parte estatica, por tela, no referencial dela."""
+    if nome in sala.CENAS_MUNDO:
+        return [tls.z_minimo_tela(estatica, tl) for tl in lista]
+    return [scn.z_minimo(est) for est in estatica]
+
+
+def render_tela_i(olho, i, lista, ordem, mundo, alvo, fundo=None, paleta=None):
+    """Desenha a tela i vista de `olho` (no MUNDO; pode ser um olho do estereo).
+
+    mundo=True: `ordem` e a ordem do mundo compartilhado, a mesma para todas as
+    telas. mundo=False: `ordem` e a lista de ordens locais, uma por tela.
+    """
+    tl = lista[i]
+    if mundo:
+        return tls.render_tela(olho, ordem, tl, alvo, fundo, paleta)
+    return tls.render_local(tls.olho_local(olho, tl), ordem[i], alvo, tl.dims, fundo,
+                            paleta)
 
 
 def desenhar_debug(canvas, head, ipd_px, fps, ms_render, tem_rosto,
                    usar_filtro, min_cutoff, beta, tremor_mm, nome_cena,
-                   roll_graus, estereo):
+                   roll_graus, estereo, guinada=None):
     """Overlay de debug, desenhado SEMPRE por ultimo.
 
     Com o anaglifo ligado isso nao e detalhe de ordem: texto desenhado antes da
@@ -110,6 +173,11 @@ def desenhar_debug(canvas, head, ipd_px, fps, ms_render, tem_rosto,
         f"{estereo['limite']:.0f} px (W/30)"
         + ("   ESTOUROU" if estereo["paralaxe"] > estereo["limite"] else ""),
     ]
+    if guinada is not None:
+        # guinada = (graus, k, ligada). k e o fator que multiplica X, Y e Z.
+        graus, k, ligada = guinada
+        linhas.append(f"guinada {graus:+5.1f} deg   k {k:.3f}   correcao "
+                      + ("ON" if ligada else "OFF (y liga)"))
     for i, linha in enumerate(linhas):
         cv2.putText(canvas, linha, (24, 50 + i * 34), FONT, 0.7,
                     branco if composto else (0, 230, 0), 2, cv2.LINE_AA)
@@ -127,27 +195,48 @@ def desenhar_debug(canvas, head, ipd_px, fps, ms_render, tem_rosto,
                     branco if composto else (0, 0, 255), 2, cv2.LINE_AA)
 
 
-def main():
-    px_w, px_h = abrir_janela()
+def argumentos(argv=None):
+    ap = argparse.ArgumentParser(description="head-coupled perspective, 1 ou 2 telas")
+    ap.add_argument("--uma-tela", action="store_true",
+                    help="ignora o telas.json e roda o modo AP1 (so o notebook)")
+    ap.add_argument("--telas", default=config.TELAS_FILE,
+                    help="caminho do telas.json (padrao: ao lado do main.py)")
+    return ap.parse_args(argv)
+
+
+def main(argv=None):
+    args = argumentos(argv)
+    # Antes de qualquer janela: depois o Windows nao deixa mudar (monitores.py).
+    modo_dpi = monitores.tornar_dpi_aware()
+    # Sem telas.json e o AP1: uma tela, a do config, com pose identidade.
+    lista = None if args.uma_tela else tls.carregar(args.telas)
+    multi = lista is not None
+    if not multi:
+        lista = [tls.tela_do_config()]
+    elif len(lista) == 1:
+        multi = False
+    janelas, tamanhos = abrir_janelas(lista, multi)
+    px_w, px_h = tamanhos[0]
     cap = tracking.open_camera()
     cam_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     cam_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     f_px = tracking.load_calibration(cam_w, cam_h)
     landmarker = tracking.make_landmarker()
     clock = tracking.Clock()
+    cenas = scn.CENAS + (sala.CENAS_MUNDO if multi else [])
     nome_cena = config.CENA_INICIAL
-    cena_estatica = scn.build(nome_cena)
-    # Fundos pre-calculados por cenario. None significa preencher de preto.
-    fundos = {nome_cena: scn.fundo(nome_cena, px_w, px_h)}
+    cena_estatica = construir(nome_cena, lista)
+    # Fundos pre-calculados por cenario e por tela. None e preencher de preto.
+    fundos = {nome_cena: [scn.fundo(nome_cena, w, h) for w, h in tamanhos]}
     t_inicio = time.perf_counter()
     # Canvas alocado uma vez e reusado: alocar 6 MB por frame custava 13 ms,
     # tanto quanto desenhar a cena inteira.
-    canvas = np.zeros((px_h, px_w, 3), np.uint8)
-    # Um alvo por olho, tambem reaproveitados. So o anaglifo usa os dois: o modo
-    # mono e o de olho unico desenham direto no canvas, sem copia nenhuma.
-    buf_L = np.zeros_like(canvas)
-    buf_R = np.zeros_like(canvas)
-    focar_janela()
+    canvases = [np.zeros((h, w, 3), np.uint8) for w, h in tamanhos]
+    canvas = canvases[0]          # o do notebook: e nele que vai o HUD
+    # Um alvo por olho e por tela, tambem reaproveitados. So o anaglifo usa: o
+    # modo mono e o de olho unico desenham direto no canvas, sem copia nenhuma.
+    bufs = [(np.zeros_like(c), np.zeros_like(c)) for c in canvases]
+    monitores.focar_janela(janelas[0])
 
     min_cutoff, beta = config.MIN_CUTOFF, config.BETA
     filtro = filters.OneEuro3D(min_cutoff, beta, config.D_CUTOFF)
@@ -156,6 +245,8 @@ def main():
     # no OneEuro3D e nao acompanha os ajustes ao vivo de min_cutoff e beta.
     filtro_theta = filters.OneEuro(config.MIN_CUTOFF, config.BETA, config.D_CUTOFF)
     usar_filtro = True
+    corrigir_guinada = config.CORRIGIR_GUINADA
+    guinada, k_escorco = 0.0, 1.0   # so para o overlay
     head = HEAD_PADRAO.copy()
     theta = 0.0
     ipd_px = 0.0
@@ -163,7 +254,7 @@ def main():
     escala_auto = config.STEREO_AUTO
     paleta = scn.paleta_neutra()
     usar_paleta = True
-    z_min_estatico = scn.z_minimo(cena_estatica)
+    z_min_estatico = z_min_estaticos(nome_cena, cena_estatica, lista)
     congelado = None     # (eye, theta) capturados pela barra de espaco
     solo = None          # None, "L" ou "R": um olho so, para diagnostico
     trocar_olhos = False
@@ -178,8 +269,12 @@ def main():
     historico = deque(maxlen=45)
     fps, t_prev, ms_render = 0.0, time.perf_counter(), 0.0
 
-    print(f"janela {px_w}x{px_h}   webcam {cam_w}x{cam_h}   f_px {f_px:.1f}")
-    print("q sai | n cena | f filtro | d debug | ESPACO congela | "
+    print(f"janela {px_w}x{px_h}   webcam {cam_w}x{cam_h}   f_px {f_px:.1f}   "
+          f"DPI {modo_dpi}")
+    if multi:
+        print("telas.json: " + ", ".join(f"{tl.nome} {w}x{h}"
+                                         for tl, (w, h) in zip(lista, tamanhos)))
+    print("q sai | n cena | f filtro | y guinada | d debug | ESPACO congela | "
           ",. min_cutoff | kl beta")
     print("estereo: 3 anaglifo | c algoritmo | p paleta | a escala auto "
           "| g cancelamento | [ ] escala | 1 so olho esq | 2 so olho dir "
@@ -189,12 +284,26 @@ def main():
         frame = tracking.read_frame(cap)
         tem_rosto = False
         if frame is not None:
-            pts = tracking.find_landmarks(landmarker, frame, clock.now_ms())
+            pts, eixo = tracking.find_landmarks_pose(landmarker, frame,
+                                                     clock.now_ms())
+            if pts is not None:
+                # eixo None = sem correcao (tecla y, ou MediaPipe sem matriz).
+                bruto = tracking.head_position(
+                    pts, frame.shape, f_px,
+                    eixo if corrigir_guinada else None)
+                if not np.isfinite(bruto).all():
+                    # Medida absurda (ipd_px zero, landmark perdido): conta como
+                    # quadro sem rosto. Um inf que entrasse no One Euro deixaria
+                    # o estado dele em NaN para sempre.
+                    pts = None
             if pts is not None:
                 tem_rosto = True
-                bruto = tracking.head_position(pts, frame.shape, f_px)
                 ipd_px, _mid = tracking.ipd_and_midpoint(pts[tracking.IRIS_L],
                                                          pts[tracking.IRIS_R])
+                if eixo is not None:
+                    guinada = tracking.guinada_graus(eixo)
+                    k_escorco = tracking.fator_escorco(eixo, _mid, frame.shape,
+                                                       f_px)
                 # O filtro e alimentado sempre, mesmo desligado, para que o
                 # estado dele fique atual e o toggle nao provoque salto.
                 suave = np.array(filtro(bruto, time.perf_counter()))
@@ -225,36 +334,59 @@ def main():
         historico.append(eye.copy())
 
         t0 = time.perf_counter()
+        t_cena = t0 - t_inicio
+        mundo = nome_cena in sala.CENAS_MUNDO
+        # O olho no referencial de cada tela. No notebook (pose identidade) e o
+        # proprio eye: o modo de uma tela continua sendo o AP1 bit a bit.
+        olhos = [tls.olho_local(eye, tl) for tl in lista]
         # Parte estatica construida uma vez, parte dinamica (as chamas) por frame.
-        dinamicos = scn.dinamico(nome_cena, t0 - t_inicio)
-        cena = cena_estatica + dinamicos
         # Ordenar e desenhar sao passos separados: a ordem sai uma vez so, do
         # olho ciclopico, e no modo estereo servira aos dois olhos.
-        ordem = scn.order_faces(cena, eye)
-        z_min = min(z_min_estatico, scn.z_minimo(dinamicos))
+        if mundo:
+            # Mundo compartilhado: UMA ordem, no mundo, para todas as telas, e a
+            # oclusao concorda dos dois lados do bezel.
+            dinamicos = sala.dinamico(nome_cena, t_cena, lista)
+            ordem = tls.ordenar_mundo(cena_estatica + dinamicos, eye)
+            z_mins = [min(ze, tls.z_minimo_tela(dinamicos, tl))
+                      for ze, tl in zip(z_min_estatico, lista)]
+        else:
+            # Uma caixa por tela: o AP1 repetido, cada um no referencial da sua.
+            dinamicos = [scn.dinamico(nome_cena, t_cena, tl.dims) for tl in lista]
+            ordem = [scn.order_faces(est + din, e)
+                     for est, din, e in zip(cena_estatica, dinamicos, olhos)]
+            z_mins = [min(ze, scn.z_minimo(din))
+                      for ze, din in zip(z_min_estatico, dinamicos)]
         if escala_auto:
-            stereo_scale = scn.escala_confortavel(eye, z_min)
+            # UMA escala para todas as telas, senao a disparidade salta no bezel.
+            # A formula do AP1 no referencial de cada tela e exata no notebook e
+            # conservadora no monitor girado (t_estereo.py); vale a menor.
+            stereo_scale = min(scn.escala_confortavel(e, z) for e, z in zip(olhos, z_mins))
         eye_L, eye_R = scn.stereo_eyes(eye, theta_uso, stereo_scale)
         if trocar_olhos:
             eye_L, eye_R = eye_R, eye_L
-        fnd = fundos[nome_cena]
         pal = paleta if (anaglifo and usar_paleta) else None
-        if teste_vazamento:
-            anaglyph.padrao_vazamento(canvas, vazamento_pct)
-        elif solo is not None:
-            # Diagnostico: um olho so, sem composicao. E o que deixa conferir o
-            # estereo sem os oculos.
-            scn.render(eye_L if solo == "L" else eye_R, ordem, canvas, fnd, pal)
-        elif anaglifo:
-            scn.render(eye_L, ordem, buf_L, fnd, pal)
-            scn.render(eye_R, ordem, buf_R, fnd, pal)
-            anaglyph.compor(buf_L, buf_R, canvas, modo_comp,
-                            vazamento_pct / 100.0 if cancelar_ghost else 0.0,
-                            config.ANAGLYPH_PEDESTAL if cancelar_ghost else 0)
-        else:
-            # O monoscopico de sempre: o olho ciclopico, uma vez so, direto no
-            # canvas, com as cores da cena. Nao passa por nada novo.
-            scn.render(eye, ordem, canvas, fnd)
+        for i, (cv, (buf_L, buf_R)) in enumerate(zip(canvases, bufs)):
+            fnd = fundos[nome_cena][i]
+            if teste_vazamento:
+                if i == 0:
+                    anaglyph.padrao_vazamento(cv, vazamento_pct)
+                else:
+                    cv[:] = 0
+            elif solo is not None:
+                # Diagnostico: um olho so, sem composicao. E o que deixa conferir
+                # o estereo sem os oculos.
+                render_tela_i(eye_L if solo == "L" else eye_R, i, lista, ordem, mundo,
+                              cv, fnd, pal)
+            elif anaglifo:
+                render_tela_i(eye_L, i, lista, ordem, mundo, buf_L, fnd, pal)
+                render_tela_i(eye_R, i, lista, ordem, mundo, buf_R, fnd, pal)
+                anaglyph.compor(buf_L, buf_R, cv, modo_comp,
+                                vazamento_pct / 100.0 if cancelar_ghost else 0.0,
+                                config.ANAGLYPH_PEDESTAL if cancelar_ghost else 0)
+            else:
+                # O monoscopico de sempre: o olho ciclopico, uma vez so, direto
+                # no canvas, com as cores da cena.
+                render_tela_i(eye, i, lista, ordem, mundo, cv, fnd)
         ms_render = (time.perf_counter() - t0) * 1000
 
         agora = time.perf_counter()
@@ -270,8 +402,9 @@ def main():
                             "paleta": usar_paleta, "escala": stereo_scale,
                             "ghost": vazamento_pct if cancelar_ghost else 0,
                             "auto": escala_auto, "limite": px_w / 30,
-                            "paralaxe": scn.paralaxe_px(eye, z_min, px_w,
-                                                        theta_uso, stereo_scale)})
+                            "paralaxe": scn.paralaxe_px(olhos[0], z_mins[0], px_w,
+                                                        theta_uso, stereo_scale)},
+                           (guinada, k_escorco, corrigir_guinada))
         # Daqui para baixo e tudo overlay, sempre DEPOIS da composicao e sempre
         # em cor neutra quando ela esta ativa: canal isolado fantasma.
         cor_aviso = (255, 255, 255) if (anaglifo and solo is None) else (0, 200, 255)
@@ -284,8 +417,8 @@ def main():
                         (px_w - 340, 88), FONT, 0.8, cor_aviso, 2, cv2.LINE_AA)
 
         # Legenda sempre visivel: em fullscreen nao da para consultar o terminal.
-        cv2.putText(canvas, "q sai   n cena   f filtro   d debug   ESPACO congela   "
-                            ",. min_cutoff   kl beta",
+        cv2.putText(canvas, "q sai   n cena   f filtro   y guinada   d debug   "
+                            "ESPACO congela   ,. min_cutoff   kl beta",
                     (24, px_h - 56), FONT, 0.55, (90, 90, 90), 1, cv2.LINE_AA)
         # Cinza neutro (90,90,90) ja sobrevive a composicao: canais iguais nao
         # fantasmam, os dois olhos leem o mesmo texto.
@@ -295,20 +428,24 @@ def main():
                             "0 teste de vazamento",
                     (24, px_h - 24), FONT, 0.55, (90, 90, 90), 1, cv2.LINE_AA)
 
-        cv2.imshow(WINDOW, canvas)
+        for nome_janela, cv in zip(janelas, canvases):
+            cv2.imshow(nome_janela, cv)
         tecla = cv2.waitKey(1) & 0xFF
         if tecla in (ord("q"), 27):
             break
         if tecla == ord("f"):
             usar_filtro = not usar_filtro
+        if tecla == ord("y"):
+            # O One Euro amacia o degrau da troca; nao precisa resetar o filtro.
+            corrigir_guinada = not corrigir_guinada
         if tecla == ord("d"):
             debug = not debug
         if tecla == ord("n"):
-            nome_cena = scn.CENAS[(scn.CENAS.index(nome_cena) + 1) % len(scn.CENAS)]
-            cena_estatica = scn.build(nome_cena)
-            z_min_estatico = scn.z_minimo(cena_estatica)
+            nome_cena = cenas[(cenas.index(nome_cena) + 1) % len(cenas)]
+            cena_estatica = construir(nome_cena, lista)
+            z_min_estatico = z_min_estaticos(nome_cena, cena_estatica, lista)
             if nome_cena not in fundos:
-                fundos[nome_cena] = scn.fundo(nome_cena, px_w, px_h)
+                fundos[nome_cena] = [scn.fundo(nome_cena, w, h) for w, h in tamanhos]
         if tecla == ord(" "):
             congelado = None if congelado is not None else (eye.copy(), theta_uso)
         if tecla in (ord(","), ord(".")):
@@ -352,7 +489,7 @@ def main():
             solo = None if solo == alvo else alvo
         if tecla == ord("s"):
             trocar_olhos = not trocar_olhos
-        if cv2.getWindowProperty(WINDOW, cv2.WND_PROP_VISIBLE) < 1:
+        if any(cv2.getWindowProperty(n, cv2.WND_PROP_VISIBLE) < 1 for n in janelas):
             break
 
     cap.release()

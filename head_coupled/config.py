@@ -84,6 +84,16 @@ CAM_REQ_H = 720
 FLIP_FRAME = True  # espelha o frame; ver nota de sinal em tracking.py
 CAM_WARMUP_S = 1.5 # descarte inicial de frames ate a auto-exposicao convergir
 
+# Correcao da guinada no Z (ver tracking.fator_escorco). Valor inicial do
+# main.py; a tecla y liga e desliga ao vivo para a comparacao A/B.
+#
+# Por que existe: o Z vem do tamanho aparente do segmento entre as irises, e
+# virar a cabeca encurta esse segmento na imagem. Sem correcao, olhar para a
+# segunda tela com 30 graus de guinada empurra o olho estimado ~9 cm para tras,
+# e a cena da tela B anda dezenas de pixels sem a cabeca ter saido do lugar.
+# A correcao usa a rotacao da cabeca que o proprio MediaPipe ja calcula.
+CORRIGIR_GUINADA = True
+
 # ------------------------------------------------------------------ calibracao
 # [MEDIR] Distancia usada no calibrate.py, da lente ate os seus olhos,
 # medida PERPENDICULAR ao plano da tela (nao na diagonal).
