@@ -1,0 +1,15 @@
+# Dependencias do head_coupled (AP1 + AP2). Instale com:
+#     pip install -r requirements.txt
+#
+# NAO instale "opencv-python" junto: o mediapipe ja traz o
+# "opencv-contrib-python", e os dois pacotes escrevem na MESMA pasta cv2.
+# Funciona enquanto as versoes batem; desinstalar um deles quebra o import cv2.
+# Se o seu ambiente ja tem os dois:
+#     pip uninstall -y opencv-python opencv-contrib-python
+#     pip install -r requirements.txt
+#
+# Qualquer OpenCV >= 4.7 serve (testado em 4.14 e 5.0, com e sem contrib).
+mediapipe>=0.10.30
+opencv-contrib-python>=4.7
+numpy
+scipy>=1.16.1

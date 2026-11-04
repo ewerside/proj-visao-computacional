@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+
+# Fotos do celular e saidas de depuracao da calibracao das telas
+head_coupled/fotos/
+head_coupled/dbg/
+head_coupled/fotos_sim/
+head_coupled/testes/saida/
+
+# Gerados pela calibracao: dependem da montagem fisica (posicao do monitor,
+# angulo da tampa). Para versionar uma calibracao boa: git add -f telas.json
+head_coupled/telas.json
+head_coupled/padroes.json

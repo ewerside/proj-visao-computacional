@@ -31,6 +31,12 @@ IPD_REAL = 0.064
 # 34.54 x 19.43 cm. Confirmacao independente: isso resulta em 141.2 DPI a
 # 1920x1080, o valor canonico de um 15.6 pol Full HD.
 # Incerteza da ordem de 1 mm. Se um dia medir com regua, substitua.
+#
+# [MEDIR] AP2: com duas telas estas duas medidas viram a REGUA da calibracao
+# pelo celular. O tamanho do monitor externo e estimado pelas fotos, mas sempre
+# em relacao a este: 1 mm de erro aqui vira 1-3 mm na posicao do monitor. Meca
+# a area ACESA (sem a moldura preta) com regua, de preferencia com o
+# testar_monitores.py aberto, que desenha uma moldura de 1 px na borda dela.
 SCREEN_W = 0.345
 SCREEN_H = 0.194
 
@@ -48,6 +54,28 @@ CAM_OFFSET_X = 0.0
 # em fullscreen e usa o valor real; este aqui e so referencia.
 SCREEN_PX_W = 1920
 SCREEN_PX_H = 1080
+
+# ----------------------------------------------------- AP2: varias telas
+# Qual monitor do Windows e a tela do notebook. None = automatico: o monitor
+# cujo tamanho informado pelo driver mais se parece com SCREEN_W, senao o
+# principal. Se o testar_monitores.py ou o calibrar_telas.py errarem, ponha
+# aqui o nome que eles mostram, ex. MONITOR_NOTEBOOK = "\\\\.\\DISPLAY2", ou o
+# indice da lista que eles imprimem (0, 1, ...).
+MONITOR_NOTEBOOK = None
+
+# Janela do monitor externo sempre por cima. Ela nao fica com o foco do
+# teclado, e sem isso a barra de tarefas daquele monitor pode cobrir a imagem.
+MONITOR_SEMPRE_NO_TOPO = True
+
+# Diagonal NOMINAL do monitor externo, em polegadas (a da etiqueta ou da
+# caixa). E so o chute inicial: a calibracao pelas fotos estima o tamanho real.
+# Errar 5-10% aqui nao muda nada; errar o modelo (32 no lugar de 24) atrapalha.
+MONITOR_DIAGONAL_POL = 24.0
+
+# Arquivos da calibracao das telas (ver calibrar_telas.py). Sem telas.json o
+# main.py roda no modo de uma tela so, exatamente como na AP1.
+TELAS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "telas.json")
+PADROES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "padroes.json")
 
 # ---------------------------------------------------------------------- webcam
 CAM_INDEX = 0
