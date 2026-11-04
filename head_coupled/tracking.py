@@ -182,10 +182,12 @@ def fator_escorco(eixo, mid_px, frame_shape, f_px):
         ipd_px = f_px * IPD_REAL * k / Z,     k = | eixo_xy - eixo_z * n |
 
     com n = ((u - cx) / f_px, (v - cy) / f_px), o ponto medio das irises na
-    imagem normalizado. A formula e EXATA, nao aproximacao de primeira ordem:
-    tirando n do ponto medio das duas projecoes, os termos de segunda ordem se
-    cancelam (conferido numericamente, erro relativo 1e-15 em 20 mil poses).
-    Por isso basta multiplicar o Z antigo por k, sem iteracao nenhuma.
+    imagem normalizado. Para o Z a formula e EXATA, nao aproximacao de primeira
+    ordem: tirando n do ponto medio das duas projecoes, os termos de segunda
+    ordem se cancelam (testes/teste_guinada_formula.py: erro 1e-12 m em 2000
+    poses). Por isso basta multiplicar o Z antigo por k, sem iteracao. X e Y
+    ficam com menos de 2 mm de erro, porque o ponto medio das projecoes nao e
+    exatamente a projecao do ponto medio 3D.
 
     Os dois termos de k:
     - eixo_xy: o escorco da guinada propriamente dito. Guinada pura de psi graus
