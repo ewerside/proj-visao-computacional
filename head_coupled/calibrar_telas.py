@@ -1,0 +1,530 @@
+"""Calibracao das duas telas com o celular: onde o monitor externo esta em
+relacao ao notebook. Gera o telas.json que o main.py usa para desenhar nas duas.
+
+PASSO A PASSO (detalhado em docs/TESTE_AP2.md)
+  1. python calibrar_telas.py mostrar
+       Cada tela mostra um padrao ChArUco em tela cheia, com o nome dela por
+       cima. Confira que NOTEBOOK esta no notebook (senao aperte t), aperte
+       ESPACO para esconder o rotulo e tire as fotos. q sai. Grava padroes.json.
+  2. Celular, app de camera normal, modo Foto, lente 1x, sempre deitado:
+       10 a 15 fotos com as DUAS telas inteiras no quadro, de lugares
+       diferentes (esquerda, centro, direita, mais alto, mais baixo), de 0.6 a
+       1.2 m, girando um pouco o celular em algumas. Nao tire todas do mesmo
+       lugar. Evite reflexo de lampada. Tire o mouse de cima dos padroes.
+  3. Copie as fotos ORIGINAIS para a pasta fotos/ ao lado deste arquivo (cabo
+       USB, Quick Share ou Google Drive; WhatsApp so "como documento").
+  4. python calibrar_telas.py calcular
+       Le fotos/ e padroes.json, grava telas.json e mostra o resumo: onde esta
+       o monitor, erro de reprojecao, avisos. Miniaturas e vista de cima em dbg/.
+  5. python main.py
+  Mexeu na tampa do notebook ou no monitor? Refaca os passos 1 a 4.
+
+PLANO B, SEM FOTOS (medidas de trena, bem menos preciso)
+  python calibrar_telas.py manual --angulo 30 --folga 0.03 --base 0.05 --inclinacao 15
+
+TESTE SEM CELULAR
+  python simular.py --pasta fotos_sim --n 12
+  python calibrar_telas.py calcular fotos_sim -o fotos_sim/telas.json
+"""
+
+import argparse
+import glob
+import json
+import math
+import os
+import sys
+
+import cv2
+import numpy as np
+
+import config
+
+AQUI = os.path.dirname(os.path.abspath(__file__))
+PASTA_FOTOS = os.path.join(AQUI, "fotos")
+PASTA_DEBUG = os.path.join(AQUI, "dbg")
+EXTENSOES = (".jpg", ".jpeg", ".png")
+FONT = cv2.FONT_HERSHEY_SIMPLEX
+
+
+# ================================================================ mostrar ===
+
+def _rotulo(img_cinza, papel, dispositivo):
+    """Padrao em BGR com o rotulo da tela por cima (para conferir de longe)."""
+    img = cv2.cvtColor(img_cinza, cv2.COLOR_GRAY2BGR)
+    h, w = img.shape[:2]
+    s = h / 1080.0
+    x0, y0, x1, y1 = int(w * 0.18), int(h * 0.28), int(w * 0.82), int(h * 0.72)
+    cv2.rectangle(img, (x0, y0), (x1, y1), (30, 30, 30), -1)
+    cv2.putText(img, papel, (x0 + int(40 * s), y0 + int(150 * s)), FONT, 3.6 * s,
+                (0, 220, 255), max(2, int(8 * s)), cv2.LINE_AA)
+    linhas = [dispositivo,
+              "ESPACO esconde este rotulo (para fotografar)",
+              "t troca notebook <-> monitor     q sai"]
+    for i, txt in enumerate(linhas):
+        cv2.putText(img, txt, (x0 + int(40 * s), y0 + int((230 + 55 * i) * s)), FONT,
+                    1.1 * s, (230, 230, 230), max(1, int(2 * s)), cv2.LINE_AA)
+    return img
+
+
+def cmd_mostrar(args):
+    import monitores
+    import padroes
+
+    modo = monitores.tornar_dpi_aware()
+    mons = monitores.listar_monitores()
+    print(f"modo DPI: {modo}")
+    for i, m in enumerate(mons):
+        print(f"  [{i}] {m}")
+    if len(mons) < 2:
+        print("\nSo ha 1 monitor. Ligue o monitor externo e aperte Win+P > Estender.")
+        return 1
+    i_nb = monitores.escolher_notebook(mons)
+    outros = [i for i in range(len(mons)) if i != i_nb]
+    if args.monitor:
+        achados = [i for i in outros if mons[i].dispositivo.lower() == args.monitor.lower()]
+        if not achados:
+            print(f"--monitor {args.monitor!r} nao encontrado")
+            return 1
+        i_mon = achados[0]
+    else:
+        i_mon = outros[0]
+        if len(outros) > 1:
+            print(f"aviso: ha {len(mons)} monitores; usando {mons[i_mon].dispositivo} "
+                  "como monitor externo (escolha outro com --monitor)")
+
+    nomes = {i: f"padrao {i}" for i in (i_nb, i_mon)}
+    tam = {}
+    for i in (i_mon, i_nb):                 # o notebook por ultimo: fica com o foco
+        topo = i == i_mon and config.MONITOR_SEMPRE_NO_TOPO
+        tam[i] = monitores.abrir_tela_cheia(nomes[i], mons[i], topo)
+        aviso = monitores.conferir_tamanho(nomes[i], *tam[i], mons[i])
+        if aviso:
+            print(aviso)
+
+    destino = args.saida or config.PADROES_FILE
+
+    def gerar_e_salvar(i_nb, i_mon):
+        (wa, ha), (wb, hb) = tam[i_nb], tam[i_mon]
+        ta = padroes.Tela("notebook", wa, ha, config.SCREEN_W, config.SCREEN_H)
+        tb = padroes.Tela.de_diagonal("monitor", wb, hb, args.diagonal)
+        pads = padroes.padroes_projeto(ta, tb)
+        dados = padroes.para_json(pads, [mons[i_nb], mons[i_mon]],
+                                  extra={"diagonal_pol_nominal": args.diagonal,
+                                         "modo_dpi": modo})
+        with open(destino, "w", encoding="utf-8") as fh:
+            json.dump(dados, fh, indent=2, ensure_ascii=False)
+        imgs = {i_nb: pads[0].imagem(), i_mon: pads[1].imagem()}
+        for p in pads:
+            mm = p.quad_px * p.tela.larg_m / p.tela.px_w * 1000
+            print(f"  {p.tela.nome}: tabuleiro {p.cols}x{p.rows}, quadrado {p.quad_px} px "
+                  f"(~{mm:.1f} mm), marcadores {p.id0}..{p.id_fim - 1}")
+        return imgs
+
+    imgs = gerar_e_salvar(i_nb, i_mon)
+    print(f"\npadroes.json gravado em {destino}")
+    print("Confira os rotulos, aperte ESPACO para esconde-los e fotografe.\n"
+          "Tecla t troca notebook <-> monitor. q ou ESC sai.")
+    mostrar_rotulo = True
+    while True:
+        for i in (i_nb, i_mon):
+            papel = "NOTEBOOK" if i == i_nb else "MONITOR"
+            img = _rotulo(imgs[i], papel, mons[i].dispositivo) if mostrar_rotulo else imgs[i]
+            cv2.imshow(nomes[i], img)
+        k = cv2.waitKey(50) & 0xFF
+        if k in (ord("q"), 27):
+            break
+        if k == ord(" "):
+            mostrar_rotulo = not mostrar_rotulo
+        if k == ord("t"):
+            i_nb, i_mon = i_mon, i_nb
+            print("trocado: notebook agora e", mons[i_nb].dispositivo)
+            imgs = gerar_e_salvar(i_nb, i_mon)
+            mostrar_rotulo = True
+        try:
+            if any(cv2.getWindowProperty(n, cv2.WND_PROP_VISIBLE) < 1
+                   for n in nomes.values()):
+                break
+        except cv2.error:
+            break
+    cv2.destroyAllWindows()
+    print(f"\nnotebook = {mons[i_nb].dispositivo}, monitor = {mons[i_mon].dispositivo}")
+    if i_nb != monitores.escolher_notebook(mons):
+        print("A escolha automatica tinha errado. Para nao precisar trocar toda vez,\n"
+              f"ponha no config.py:  MONITOR_NOTEBOOK = {mons[i_nb].dispositivo!r}")
+    print("Proximo passo: copie as fotos para a pasta fotos/ e rode\n"
+          "    python calibrar_telas.py calcular")
+    return 0
+
+
+# =============================================================== calcular ===
+
+def listar_fotos(entrada):
+    """Arquivos de foto de uma pasta, de um padrao glob ou de uma lista."""
+    arquivos = []
+    for e in entrada:
+        if os.path.isdir(e):
+            arquivos += [os.path.join(e, f) for f in os.listdir(e)]
+        else:
+            arquivos += glob.glob(e)
+    heic = sorted(f for f in arquivos if f.lower().endswith((".heic", ".heif")))
+    fotos = sorted(f for f in arquivos if f.lower().endswith(EXTENSOES)
+                   and not os.path.basename(f).startswith("."))
+    return fotos, heic
+
+
+def resumo_geometria(R, t, pad_a, pad_b, escala_b):
+    """Numeros em linguagem de gente para conferir com a trena."""
+    from scipy.spatial.transform import Rotation
+    wa, ha = pad_a.tela.larg_m, pad_a.tela.alt_m
+    wb, hb = pad_b.tela.larg_m * escala_b, pad_b.tela.alt_m * escala_b
+    lado = "direita" if t[0] > 0 else "esquerda"
+    s = 1.0 if lado == "direita" else -1.0
+    # Menor distancia entre as bordas internas (verticais) das areas acesas,
+    # no referencial do notebook: e a "folga" que se mede com a trena.
+    ua = np.linspace(-1, 1, 41)
+    borda_a = np.stack([np.full_like(ua, s * wa / 2), ua * ha / 2, 0 * ua], axis=1)
+    borda_b = np.stack([np.full_like(ua, -s * wb / 2), ua * hb / 2, 0 * ua], axis=1) @ R.T + t
+    folga = float(np.min(np.linalg.norm(borda_a[:, None] - borda_b[None], axis=2)))
+    guinada, arfagem, rolagem = Rotation.from_matrix(R).as_euler("YXZ", degrees=True)
+    ang = math.degrees(math.acos(max(-1.0, min(1.0, float(R[2, 2])))))
+    diag = math.hypot(wb, hb) / 0.0254
+    return {
+        "lado": lado,
+        "centro_cm": [round(float(x) * 100, 1) for x in t],
+        "angulo_entre_telas_graus": round(ang, 1),
+        "guinada_graus": round(float(guinada), 1),
+        "arfagem_graus": round(float(arfagem), 1),
+        "rolagem_graus": round(float(rolagem), 1),
+        "folga_bordas_internas_cm": round(folga * 100, 1),
+        "altura_centro_cm": round(float(t[1]) * 100, 1),
+        "monitor_cm": [round(wb * 100, 1), round(hb * 100, 1)],
+        "monitor_diagonal_pol": round(diag, 1),
+    }
+
+
+def desenhar_planta(caminho, R, t, pad_a, pad_b, escala_b, cameras=()):
+    """Vista de cima (plano X-Z do notebook): telas, normais, webcam e fotos."""
+    W = H = 800
+    img = np.full((H, W, 3), 255, np.uint8)
+    wb = pad_b.tela.larg_m * escala_b
+    qa = np.array([[-pad_a.tela.larg_m / 2, 0, 0], [pad_a.tela.larg_m / 2, 0, 0]])
+    qb = np.array([[-wb / 2, 0, 0], [wb / 2, 0, 0]]) @ R.T + t
+    pontos = [qa, qb] + ([np.array(cameras)] if len(cameras) else [])
+    todos = np.vstack(pontos)[:, [0, 2]]
+    lo, hi = todos.min(axis=0) - 0.15, todos.max(axis=0) + 0.15
+    esc = 0.9 * min(W, H) / max(hi - lo)
+    centro = (lo + hi) / 2
+
+    def px(p):
+        x, z = p[0], p[2]
+        return (int(W / 2 + (x - centro[0]) * esc), int(H / 2 + (z - centro[1]) * esc))
+    # Grade de 10 cm
+    for k in np.arange(math.floor(lo[0] * 10), math.ceil(hi[0] * 10) + 1) / 10:
+        cv2.line(img, px((k, 0, lo[1])), px((k, 0, hi[1])), (235, 235, 235), 1)
+    for k in np.arange(math.floor(lo[1] * 10), math.ceil(hi[1] * 10) + 1) / 10:
+        cv2.line(img, px((lo[0], 0, k)), px((hi[0], 0, k)), (235, 235, 235), 1)
+    for q, nome, cor, n in ((qa, "notebook", (40, 40, 40), np.array([0, 0, 1.0])),
+                            (qb, "monitor", (200, 90, 0), R[:, 2])):
+        cv2.line(img, px(q[0]), px(q[1]), cor, 4, cv2.LINE_AA)
+        meio = q.mean(axis=0)
+        cv2.arrowedLine(img, px(meio), px(meio + 0.08 * n), cor, 2, cv2.LINE_AA)
+        cv2.putText(img, nome, px(meio + np.array([0.0, 0, -0.04])), FONT, 0.6, cor, 2,
+                    cv2.LINE_AA)
+    cam = np.array([config.CAM_OFFSET_X, config.CAM_OFFSET_Y, 0.0])
+    cv2.circle(img, px(cam), 6, (0, 0, 200), -1)
+    cv2.putText(img, "webcam", px(cam + np.array([0.02, 0, 0.03])), FONT, 0.5,
+                (0, 0, 200), 1, cv2.LINE_AA)
+    for c in cameras:
+        cv2.circle(img, px(c), 5, (0, 150, 0), -1)
+    cv2.putText(img, "vista de cima (X para a direita, Z para quem olha). "
+                     "Pontos verdes: onde o celular estava em cada foto. Grade: 10 cm",
+                (10, H - 12), FONT, 0.42, (90, 90, 90), 1, cv2.LINE_AA)
+    cv2.imwrite(caminho, img)
+
+
+def calcular(fotos, caminho_padroes=None, saida=None, fixar_escala_b=False,
+             pasta_debug=PASTA_DEBUG, verdade=None, verbose=True):
+    """Fotos -> telas.json. Devolve um dicionario com o resultado (para testes).
+
+    Levanta SystemExit com mensagem legivel nos erros que o usuario resolve
+    (faltou padroes.json, nenhuma foto, poucas fotos com as duas telas).
+    """
+    import calibracao
+    import detectar
+    import padroes
+    import telas
+
+    def log(*a):
+        if verbose:
+            print(*a)
+
+    arquivos, heic = listar_fotos(fotos)
+    if heic:
+        log(f"aviso: {len(heic)} foto(s) HEIC/HEIF ignoradas: o OpenCV nao le esse "
+            "formato. No celular escolha JPEG (Samsung: desligue 'fotos de alta "
+            "eficiencia').")
+    if not arquivos:
+        raise SystemExit(f"nenhuma foto .jpg/.png em {fotos}. Copie as fotos do celular "
+                         f"para {PASTA_FOTOS} ou passe a pasta: calcular <pasta>")
+    if caminho_padroes is None:
+        pasta0 = fotos[0] if os.path.isdir(fotos[0]) else os.path.dirname(fotos[0])
+        local = os.path.join(pasta0, "padroes.json")
+        caminho_padroes = local if os.path.exists(local) else config.PADROES_FILE
+    if not os.path.exists(caminho_padroes):
+        raise SystemExit(f"nao achei {caminho_padroes}. Rode primeiro:\n"
+                         "    python calibrar_telas.py mostrar\n"
+                         "e tire as fotos com os padroes na tela.")
+    with open(caminho_padroes, encoding="utf-8") as fh:
+        dados_pad = json.load(fh)
+    pads = padroes.de_json(dados_pad)
+    det = detectar.Detector(pads)
+    if pasta_debug:
+        os.makedirs(pasta_debug, exist_ok=True)
+
+    log(f"{len(arquivos)} fotos, padroes de {caminho_padroes}")
+    fotos_det, tam, usadas = [], None, []
+    for arq in arquivos:
+        nome = os.path.basename(arq)
+        try:
+            img = detectar.ler_foto(arq)
+        except IOError as e:
+            log(f"  {nome}: {e}")
+            continue
+        if tam is None:
+            tam = (img.shape[1], img.shape[0])
+        if (img.shape[1], img.shape[0]) != tam:
+            log(f"  {nome}: {img.shape[1]}x{img.shape[0]} diferente de {tam[0]}x{tam[1]}, "
+                "ignorada (todas as fotos tem de ter o mesmo tamanho: mesma lente, "
+                "mesmo modo, celular deitado)")
+            continue
+        r = det.detectar(img)
+        na = 0 if r[0] is None else r[0].n
+        nb = 0 if r[1] is None else r[1].n
+        log(f"  {nome}: notebook {na:3d} cantos, monitor {nb:3d} cantos")
+        if pasta_debug:
+            cv2.imwrite(os.path.join(pasta_debug, nome + ".png"), detectar.desenhar(img, r))
+        if r[0] is None and r[1] is None:
+            continue
+        fotos_det.append(r)
+        usadas.append(nome)
+    n_duas = sum(1 for r in fotos_det if r[0] is not None and r[1] is not None)
+    if n_duas < 3:
+        raise SystemExit(f"so {n_duas} foto(s) mostram as DUAS telas reconhecidas; sao "
+                         "necessarias pelo menos 3 (o ideal e 10 a 15). Veja as miniaturas "
+                         f"em {pasta_debug}: os pontos coloridos sao os cantos achados. "
+                         "Chegue mais perto, evite reflexo e confira os padroes na tela.")
+
+    cal = calibracao.calibrar(fotos_det, tam, estimar_escala=not fixar_escala_b)
+    d = calibracao.telas_json(pads, cal, tam,
+                              extra={"fotos": usadas, "opencv": cv2.__version__,
+                                     "padroes": os.path.abspath(caminho_padroes),
+                                     "origem": "calibrar_telas.py calcular"})
+    d["referencial"] = telas.REFERENCIAL
+    d["qualidade"]["fotos_descartadas_media"] = [usadas[j] for j in cal.descartadas]
+    for t_json, t_pad in zip(d["telas"], dados_pad["telas"]):
+        t_json["monitor"] = t_pad.get("monitor")
+    geo = resumo_geometria(cal.R, cal.t, pads[0], pads[1], cal.escala_B)
+    d["resumo"] = geo
+    saida = saida or config.TELAS_FILE
+    with open(saida, "w", encoding="utf-8") as fh:
+        json.dump(d, fh, indent=2, ensure_ascii=False)
+    telas.carregar(saida)                      # confere que o main.py consegue ler
+
+    cameras = []
+    if cal.ba is not None:
+        for Rcw, tcw in cal.ba.poses.values():
+            cameras.append(-np.asarray(Rcw).T @ np.asarray(tcw).ravel())
+    if pasta_debug:
+        desenhar_planta(os.path.join(pasta_debug, "planta.png"), cal.R, cal.t,
+                        pads[0], pads[1], cal.escala_B, cameras)
+
+    q = d["qualidade"]
+    avisos = []
+    if q["rms_reproj_px"] is not None and q["rms_reproj_px"] > 1.0:
+        avisos.append(f"erro de reprojecao alto ({q['rms_reproj_px']} px): fotos tremidas, "
+                      "desfocadas ou algo mexeu entre as fotos")
+    if q["dispersao_entre_fotos"]["trans_mm"] > 5:
+        avisos.append("as fotos discordam entre si (dispersao "
+                      f"{q['dispersao_entre_fotos']['trans_mm']} mm): algo mexeu?")
+    if n_duas < 6:
+        avisos.append(f"so {n_duas} fotos com as duas telas: tire 10 a 15")
+    diag_nom = dados_pad.get("diagonal_pol_nominal")
+    if diag_nom and abs(geo["monitor_diagonal_pol"] / diag_nom - 1) > 0.08:
+        avisos.append(f"o monitor saiu com {geo['monitor_diagonal_pol']} pol, mas a "
+                      f"diagonal informada foi {diag_nom}: confira MONITOR_DIAGONAL_POL "
+                      "ou tire fotos de pontos de vista mais variados")
+    lado = geo["lado"]
+    log("")
+    log(f"Monitor a {lado} do notebook. Centro dele: x {geo['centro_cm'][0]} cm, "
+        f"y {geo['centro_cm'][1]} cm, z {geo['centro_cm'][2]} cm (z = para quem olha)")
+    log(f"Angulo entre as telas {geo['angulo_entre_telas_graus']} graus (guinada "
+        f"{geo['guinada_graus']}, arfagem {geo['arfagem_graus']}, rolagem "
+        f"{geo['rolagem_graus']}); folga entre as bordas internas "
+        f"{geo['folga_bordas_internas_cm']} cm")
+    log(f"Tamanho estimado do monitor: {geo['monitor_cm'][0]} x {geo['monitor_cm'][1]} cm "
+        f"({geo['monitor_diagonal_pol']} pol)")
+    log(f"Qualidade: reprojecao {q['rms_reproj_px']} px, {n_duas} fotos com as duas "
+        f"telas, dispersao {q['dispersao_entre_fotos']}")
+    for a in avisos:
+        log("AVISO: " + a)
+    log(f"\ntelas.json gravado em {saida}")
+    if pasta_debug:
+        log(f"miniaturas e vista de cima (planta.png) em {pasta_debug}")
+
+    resultado = {"telas_json": d, "calibracao": cal, "padroes": pads, "avisos": avisos,
+                 "n_duas_telas": n_duas, "saida": saida}
+    if verdade is None:
+        pasta0 = fotos[0] if os.path.isdir(fotos[0]) else os.path.dirname(fotos[0])
+        cand = os.path.join(pasta0, "verdade.json")
+        verdade = cand if os.path.exists(cand) else None
+    if verdade:
+        resultado["erro"] = comparar_com_verdade(verdade, cal, pads)
+        e = resultado["erro"]
+        log(f"ERRO contra a verdade ({os.path.basename(verdade)}): rotacao "
+            f"{e['rot_graus']:.4f} graus, translacao {e['trans_mm']:.3f} mm, pior quina "
+            f"{e['pior_quina_mm']:.3f} mm, tamanho do monitor {e['tamanho_pct']:+.3f}%")
+    return resultado
+
+
+def comparar_com_verdade(caminho, cal, pads):
+    """Erro da calibracao contra o verdade.json do simular.py."""
+    import calibracao
+    import padroes
+    with open(caminho, encoding="utf-8") as fh:
+        v = json.load(fh)
+    Rv, tv = np.array(v["R_AB"]), np.array(v["t_AB"])
+    tb = pads[1].tela
+    tela_v = padroes.Tela(tb.nome, tb.px_w, tb.px_h, *v["tela_B_m"])
+    Qe = calibracao.quinas_no_mundo(pads[1], cal.R, cal.t, cal.escala_B)
+    Qv = pads[1].quinas_tela(tela_v) @ Rv.T + tv
+    return {"rot_graus": float(calibracao.angulo_graus(Rv, cal.R)),
+            "trans_mm": float(1000 * np.linalg.norm(cal.t - tv)),
+            "pior_quina_mm": float(1000 * np.max(np.linalg.norm(Qe - Qv, axis=1))),
+            "tamanho_pct": float(100 * (tb.larg_m * cal.escala_B / tela_v.larg_m - 1))}
+
+
+def cmd_calcular(args):
+    calcular(args.fotos or [PASTA_FOTOS], args.padroes, args.saida, args.fixar_escala_b,
+             None if args.sem_debug else (args.debug or PASTA_DEBUG), args.verdade)
+    return 0
+
+
+# ================================================================= manual ===
+
+def _rot_x(graus):
+    a = math.radians(graus)
+    c, s = math.cos(a), math.sin(a)
+    return np.array([[1.0, 0, 0], [0, c, -s], [0, s, c]])
+
+
+def pose_manual(larg_a, alt_a, larg_b, alt_b, lado="direita", angulo=30.0, folga=0.03,
+                base=0.0, recuo=0.0, inclinacao=0.0):
+    """Pose do monitor no referencial do notebook a partir de medidas de trena.
+
+    Referencial da MESA (auxiliar): origem no meio da borda de BAIXO da area
+    acesa do notebook, X para a direita, Y vertical para cima, Z horizontal
+    para quem olha. O notebook esta inclinado para tras `inclinacao` graus
+    (tampa em relacao a vertical); o monitor esta em pe, girado `angulo` graus
+    em torno da vertical com a borda de FORA vindo para quem olha.
+      folga: distancia horizontal entre as bordas internas das areas acesas
+      base:  altura da borda de baixo da area acesa do monitor menos a do
+             notebook (as duas medidas a partir da mesa)
+      recuo: quanto a quina interna de baixo do monitor esta ATRAS da linha
+             da borda de baixo do notebook (positivo = mais longe de quem olha)
+    """
+    import telas
+    R_mn = _rot_x(-inclinacao)                     # notebook na mesa
+    s = 1.0 if lado == "direita" else -1.0
+    R_mm = telas.rot_y(-s * angulo)                # monitor na mesa
+    c_nb = R_mn @ np.array([0.0, alt_a / 2, 0.0])
+    quina = np.array([s * (larg_a / 2 + folga), base, -recuo])
+    c_mon = quina - R_mm @ np.array([-s * larg_b / 2, -alt_b / 2, 0.0])
+    return R_mn.T @ R_mm, R_mn.T @ (c_mon - c_nb)
+
+
+def cmd_manual(args):
+    import monitores
+    import padroes
+    import telas
+    mons = monitores.listar_monitores()
+    i_nb = monitores.escolher_notebook(mons)
+    outros = [m for i, m in enumerate(mons) if i != i_nb]
+    if not outros and args.resolucao is None:
+        print("So ha 1 monitor ligado: passe --resolucao LxA do monitor externo "
+              "(o telas.json nao vai achar o monitor ate ele ser ligado).")
+        return 1
+    mon = outros[0] if outros else None
+    if args.resolucao:
+        px_w, px_h = (int(x) for x in args.resolucao.lower().split("x"))
+    else:
+        px_w, px_h = mon.largura, mon.altura
+    tb = padroes.Tela.de_diagonal("monitor", px_w, px_h, args.diagonal)
+    R, t = pose_manual(config.SCREEN_W, config.SCREEN_H, tb.larg_m, tb.alt_m, args.lado,
+                       args.angulo, args.folga, args.base, args.recuo, args.inclinacao)
+    nb = mons[i_nb]
+    a = telas.Tela("notebook", config.SCREEN_W, config.SCREEN_H, nb.largura, nb.altura,
+                   monitor=nb.para_json())
+    b = telas.Tela("monitor", tb.larg_m, tb.alt_m, px_w, px_h, R, t,
+                   None if mon is None else mon.para_json())
+    saida = args.saida or config.TELAS_FILE
+    telas.salvar([a, b], saida, {"origem": "calibrar_telas.py manual (trena)",
+                                 "medidas": {k: v for k, v in vars(args).items()
+                                             if k not in ("func", "comando")}})
+    print(f"telas.json gravado em {saida} a partir das medidas de trena.")
+    print(f"Monitor {tb.larg_m * 100:.1f} x {tb.alt_m * 100:.1f} cm, centro em "
+          f"{np.round(t * 100, 1).tolist()} cm. Use para testar; a calibracao por fotos "
+          "e bem mais precisa.")
+    return 0
+
+
+# ================================================================== main ===
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="calibracao das duas telas com o celular",
+                                 formatter_class=argparse.RawDescriptionHelpFormatter,
+                                 epilog=__doc__)
+    sub = ap.add_subparsers(dest="comando", required=True)
+
+    m = sub.add_parser("mostrar", help="mostra os padroes ChArUco nas duas telas")
+    m.add_argument("--diagonal", type=float, default=config.MONITOR_DIAGONAL_POL,
+                   help="diagonal nominal do monitor externo, em polegadas")
+    m.add_argument("--monitor", default=None,
+                   help="dispositivo do monitor externo, se houver mais de um")
+    m.add_argument("-o", "--saida", default=None, help="padroes.json (padrao: config)")
+    m.set_defaults(func=cmd_mostrar)
+
+    c = sub.add_parser("calcular", help="calcula o telas.json a partir das fotos")
+    c.add_argument("fotos", nargs="*", help="pasta ou arquivos (padrao: fotos/)")
+    c.add_argument("--padroes", default=None,
+                   help="padroes.json (padrao: o da pasta das fotos, senao o do config)")
+    c.add_argument("-o", "--saida", default=None, help="telas.json (padrao: config)")
+    c.add_argument("--fixar-escala-b", action="store_true",
+                   help="NAO estima o tamanho do monitor (so se a diagonal for exata)")
+    c.add_argument("--debug", default=None, help="pasta das miniaturas (padrao: dbg/)")
+    c.add_argument("--sem-debug", action="store_true", help="nao grava miniaturas")
+    c.add_argument("--verdade", default=None, help="verdade.json do simular.py")
+    c.set_defaults(func=cmd_calcular)
+
+    n = sub.add_parser("manual", help="telas.json a partir de medidas de trena")
+    n.add_argument("--lado", choices=["direita", "esquerda"], default="direita")
+    n.add_argument("--angulo", type=float, default=30.0,
+                   help="graus que o monitor esta virado para quem olha")
+    n.add_argument("--folga", type=float, default=0.03,
+                   help="m entre as bordas internas das areas acesas")
+    n.add_argument("--base", type=float, default=0.0,
+                   help="m: altura da borda de baixo do monitor menos a do notebook")
+    n.add_argument("--recuo", type=float, default=0.0,
+                   help="m que o monitor esta atras do notebook")
+    n.add_argument("--inclinacao", type=float, default=0.0,
+                   help="graus que a tampa do notebook esta inclinada para tras")
+    n.add_argument("--diagonal", type=float, default=config.MONITOR_DIAGONAL_POL)
+    n.add_argument("--resolucao", default=None, help="LxA do monitor, se desligado")
+    n.add_argument("-o", "--saida", default=None)
+    n.set_defaults(func=cmd_manual)
+
+    args = ap.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
