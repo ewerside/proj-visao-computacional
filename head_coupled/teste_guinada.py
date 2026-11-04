@@ -50,11 +50,16 @@ PROTOCOLO (10 minutos, notebook com focal.json valido)
 import sys
 import time
 
-import cv2
-import numpy as np
+if __name__ == "__main__" and sys.argv[1:2] in (["-h"], ["--help"]):
+    # Antes dos imports pesados: o --help funciona mesmo sem webcam/MediaPipe.
+    print(__doc__)
+    sys.exit(0)
 
-import config
-import tracking
+import cv2  # noqa: E402
+import numpy as np  # noqa: E402
+
+import config  # noqa: E402
+import tracking  # noqa: E402
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 JANELA = "teste de guinada"
@@ -241,9 +246,6 @@ def de_video(caminho, f_px=None, janela=True, espelhar=True):
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    if args and args[0] in ("-h", "--help"):
-        print(__doc__)
-        sys.exit(0)
     if not args:
         ao_vivo()
     else:
