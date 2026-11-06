@@ -12,56 +12,80 @@ Os passos estão em ordem: cada um confirma uma parte antes da próxima. Se algo
 > 5. Tirar as fotos com o celular e copiá-las para o PC (passo 8).
 > 6. Olhar as duas telas e dizer se a ilusão funciona (passo 9).
 
-Todos os comandos rodam dentro da pasta `head_coupled`, num terminal (PowerShell ou Prompt de Comando).
+Os comandos são para o **PowerShell** do Windows.
 
 ---
 
-## 0. Baixar o código (2 min)
+## 0. Preparar o notebook e baixar o projeto (15 min, só na primeira vez)
+
+### 0.1 Abrir o PowerShell na sua pasta
+No Explorador de Arquivos, entre na pasta que você criou. Clique na barra de endereço, apague o que estiver escrito, digite `powershell` e aperte Enter. Abre um terminal já dentro dessa pasta.
+
+### 0.2 Conferir o Git e o Python
+```bash
+git --version
+```
+Se der erro, instale o Git em git-scm.com (botão Download for Windows, opções padrão), feche e abra o PowerShell de novo.
 
 ```bash
-git fetch origin
+py --version
 ```
+Precisa ser 3.12 ou mais nova (a AP1 usou a 3.14). Se der erro, instale o Python em python.org. No instalador, marque **"Add python.exe to PATH"**. Feche e abra o PowerShell de novo.
+
+### 0.3 Baixar o projeto
+```bash
+git clone --branch claude/wizardly-faraday-xc5k09 https://github.com/ewerside/proj-visao-computacional.git
+```
+Isso cria a subpasta `proj-visao-computacional`, já com a branch da AP2. Se abrir uma janela de login do GitHub, entre com a conta que tem acesso ao repositório.
 
 ```bash
-git checkout claude/wizardly-faraday-xc5k09
+cd proj-visao-computacional
 ```
 
+### 0.4 Criar um ambiente Python só para o projeto
+O ambiente isolado (`.venv`) evita a mistura de dois OpenCV que já aconteceu na AP1.
+```bash
+py -m venv .venv
+```
+```bash
+.venv\Scripts\Activate.ps1
+```
+O início da linha do terminal passa a mostrar `(.venv)`.
+
+Se aparecer "a execução de scripts foi desabilitada neste sistema", rode o comando abaixo, responda `S` e repita o `Activate.ps1`:
+```bash
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+**Toda vez que abrir um terminal novo** para o projeto, entre em `proj-visao-computacional` e rode `.venv\Scripts\Activate.ps1` de novo.
+
+### 0.5 Instalar as dependências (uns 5 min)
+```bash
+python -m pip install --upgrade pip
+```
+```bash
+pip install -r requirements.txt
+```
+Instala mediapipe, OpenCV (o `opencv-contrib-python`, que o mediapipe já pede), numpy e scipy, só dentro do `.venv`.
+
+### 0.6 Entrar na pasta do código
 ```bash
 cd head_coupled
 ```
+Todos os comandos daqui para a frente rodam **dentro de `head_coupled`**, com o `(.venv)` ativo.
 
-O `main` continua com a AP1 intacta. Tudo da AP2 está nessa branch.
+### Já tinha um clone da AP1?
+Em vez do `git clone`, entre nele e rode `git fetch origin` e depois `git checkout claude/wizardly-faraday-xc5k09`. Se o checkout reclamar de arquivos que seriam sobrescritos:
+- **Em `head_coupled/__pycache__`:** são arquivos gerados que a AP1 tinha versionado por engano. Rode `git restore head_coupled/__pycache__` e repita o checkout.
+- **No `config.py`:** você tem medidas editadas lá. Anote os valores, rode `git stash`, faça o checkout e digite os valores no `config.py` novo.
 
-Se o checkout reclamar de arquivos que seriam sobrescritos:
-- **Em `head_coupled/__pycache__`:** são arquivos gerados que a AP1 tinha versionado por engano. Descarte-os e repita o checkout:
+## 1. Webcam: o focal.json (2 min, se precisar)
 
-  ```bash
-  git restore head_coupled/__pycache__
-  ```
-
-- **No `config.py`:** você tem medidas editadas lá. Anote os seus valores, rode `git stash`, faça o checkout e digite os valores de novo no `config.py` novo.
-
-## 1. Instalar as dependências (5 min)
-
-Primeiro veja se há dois OpenCV instalados ao mesmo tempo. O README da AP1 mandava instalar `opencv-python`, e o mediapipe já traz o `opencv-contrib-python`.
-
+O `focal.json` do repositório é a calibração da webcam do notebook usado na AP1. **Se este for o mesmo notebook**, pule este passo. Se for outro notebook, ou se mais adiante o `main.py` reclamar de calibração, rode:
 ```bash
-pip list
+python calibrate.py
 ```
-
-Se aparecerem **os dois**, `opencv-python` e `opencv-contrib-python`, desinstale os dois:
-
-```bash
-pip uninstall -y opencv-python opencv-contrib-python
-```
-
-Depois instale tudo, uma vez só:
-
-```bash
-pip install -r ../requirements.txt
-```
-
-O que mudou em relação à AP1: entrou o `scipy`, usado no cálculo da calibração.
+Sente-se a 60 cm da lente, medidos com trena (ou ajuste `CALIB_DISTANCE` no `config.py`), olhe reto para a câmera e aperte ESPAÇO.
 
 ## 2. Testes automáticos (1 min)
 
