@@ -34,9 +34,11 @@ GUI = _ambiente.GuiFalsa().instalar()
 # debug (d): a AP2 acrescentou nele a linha da guinada, de proposito.
 TECLAS_AP1 = {12: "n", 20: "n", 28: "3", 34: "1", 38: "1", 40: "3", 41: "n",
               55: "n", 60: "q"}
-# idem, depois sala e alinhamento (so com duas telas), anaglifo, y, d.
+# idem, depois as cenas do mundo (so com duas telas): janelas (com d, dois
+# quadros de anaglifo e y), sala, e alinhamento com anaglifo.
 TECLAS_MULTI = {12: "n", 20: "n", 28: "3", 34: "3", 35: "n", 43: "n", 44: "d",
-                48: "y", 50: "y", 52: "n", 60: "3", 64: "3", 65: "q"}
+                45: "3", 47: "3", 48: "y", 50: "y", 52: "n", 56: "n", 60: "3",
+                64: "3", 65: "q"}
 
 
 def rodar(main_mod, teclas, argv=None, guardar=()):
@@ -93,7 +95,7 @@ def main():
     # Eixo interocular de frente (rotacao identidade): k = 1, o numero nao muda,
     # mas o caminho da correcao de guinada roda de verdade.
     _ambiente.instalar_tracking_falso(GUI, eixo=np.array([1.0, 0.0, 0.0]))
-    quadros = (11, 19, 27, 42, 51, 59)
+    quadros = (11, 19, 27, 42, 51, 55, 59)
     g_multi, img_multi = rodar(main_novo, TECLAS_MULTI, ["--telas", caminho],
                                guardar=quadros)
     janelas = sorted({g[1] for g in g_multi})

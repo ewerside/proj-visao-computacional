@@ -44,6 +44,11 @@ ARQUIVO = config.TELAS_FILE
 # lascas invisiveis, caras e sem efeito nenhum.
 EPS_PORTAL = 1e-6
 
+# Folga, em pixels, do teste "objeto inteiro fora do canvas" do desenho em
+# lote. As linhas mais grossas das cenas tem 2 a 3 px; com o antialias elas
+# passam ~2 px do vertice. 16 px sobra.
+MARGEM_PX = 16
+
 # Versao de pose, global e crescente. Chave do cache de vertices locais: um
 # id() de objeto pode ser reaproveitado depois que o objeto morre, uma versao
 # daqui nunca se repete.
@@ -326,7 +331,38 @@ def ordenar_mundo(cena, eye):
     """
     casca = [o for o in cena if o.get("camada") == 0]
     resto = [o for o in cena if o.get("camada") != 0]
-    return casca + scn.order_faces(resto, eye, descartar_atras=False)
+    return casca + _ordenar_lote(resto, eye)
+
+
+def _ordenar_lote(objs, eye):
+    """O order_faces(descartar_atras=False) do AP1, em lote.
+
+    Mesma regra (back-face culling pelo centro da face, distancia media dos
+    vertices ao olho, de tras para frente, ordem estavel no empate), mas com
+    todos os vertices num array so. O laco do AP1 paga ~12 us de overhead do
+    numpy por objeto: com as ~300 faces de uma maquete eram ~4 ms por quadro so
+    para ordenar, mais que o desenho de uma tela. O order_faces fica como esta
+    porque e o caminho que o teste de regressao compara bit a bit com o AP1.
+    """
+    if not objs:
+        return []
+    eye = np.asarray(eye, float)
+    vs = [o["v"] for o in objs]
+    cont = np.fromiter(map(len, vs), np.intp, len(vs))
+    ini = np.zeros(len(vs), np.intp)
+    ini[1:] = np.cumsum(cont[:-1])
+    V = np.concatenate(vs)
+    dist = np.add.reduceat(np.linalg.norm(V - eye, axis=1), ini) / cont
+    com_n = [i for i, o in enumerate(objs)
+             if o.get("n") is not None and o.get("cull", True)]
+    fica = np.ones(len(objs), bool)
+    if com_n:
+        centro = np.add.reduceat(V, ini, axis=0)[com_n] / cont[com_n, None]
+        N = np.array([objs[i]["n"] for i in com_n], float)
+        fica[com_n] = np.einsum("ij,ij->i", N, eye - centro) > 0
+    idx = np.flatnonzero(fica)
+    idx = idx[np.argsort(-dist[idx], kind="stable")]
+    return [objs[i] for i in idx]
 
 
 def render_tela(eye, ordem, tela, out, fundo=None, paleta=None,
@@ -377,11 +413,21 @@ def desenhar_lote(olho, objs, vs, out, dims, fundo=None, paleta=None):
         return out
     P = scn.pixels_inteiros(scn.project(np.concatenate(vs), olho, px_w, px_h, dims),
                             px_w, px_h)
-    ini = 0
-    for obj, v in zip(objs, vs):
-        fim = ini + len(v)
-        scn.desenhar(out, obj, P[ini:fim], paleta, cv2)
-        ini = fim
+    # Objeto inteiro fora do canvas nao desenha nenhum pixel, mas o fillPoly e
+    # o polylines cobram do mesmo jeito. No mundo compartilhado e o caso comum:
+    # a ordem e uma so para as duas telas, e cada tela so mostra uma fatia dela
+    # (na maquete, ~40% dos objetos). A margem cobre espessura e antialias das
+    # linhas, entao pular nao muda nenhum pixel.
+    cont = np.fromiter(map(len, vs), np.intp, len(vs))
+    fins = np.cumsum(cont)
+    inis = fins - cont
+    lo = np.minimum.reduceat(P, inis, axis=0)
+    hi = np.maximum.reduceat(P, inis, axis=0)
+    m = MARGEM_PX
+    fora = ((hi[:, 0] < -m) | (lo[:, 0] > px_w + m)
+            | (hi[:, 1] < -m) | (lo[:, 1] > px_h + m))
+    for i in np.flatnonzero(~fora):
+        scn.desenhar(out, objs[i], P[inis[i]:fins[i]], paleta, cv2)
     return out
 
 

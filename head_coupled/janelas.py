@@ -34,9 +34,10 @@ defeito que a cena "sala" mostrou na montagem real:
    como passaria atras de um pilar entre duas janelas. A profundidade dele e a
    menor em que as DUAS telas ja enxergam o chao.
 
-O resto da maquete (casas, arvores, moinho, montanhas no fundo) e posicionado
-pela tela em que deve aparecer, como fracao do trecho de chao que ela mostra
-do olho tipico (Geometria.no_chao), e nao em metros fixos.
+O resto da maquete (casas, arvores, moinho, lago, montanhas no fundo e uma
+estrada que sai da moldura de baixo do notebook) e posicionado pela tela em
+que deve aparecer, como fracao do trecho de chao que ela mostra do olho
+tipico (Geometria.no_chao), e nao em metros fixos.
 
 Profundidade moderada: o fundo fica a PROF_SALA do canto mais fundo das telas.
 Tudo fica atras do plano de cada tela; o que passa na frente de uma tela (as
@@ -82,6 +83,8 @@ LOCOMOTIVA = (40, 40, 190)
 CABINE = (55, 55, 60)
 VAGOES = [(170, 110, 50), (40, 185, 230), (80, 160, 60)]
 FUMACA = (215, 215, 220)
+ESTRADA = (96, 138, 168)       # terra batida
+LARG_ESTRADA = 0.024
 LAGO = (120, 70, 30)
 LAGO_BORDA = (180, 140, 90)
 # Ceu do fundo, de cima para baixo: entardecer, escuro em cima e quente no
@@ -537,12 +540,72 @@ def _sombra(p, raio):
     return scn._sombra((p[0], 0.0, p[2]), raio, p[1])
 
 
+def _curva(pts, n=3):
+    """Catmull-Rom pelos pontos (a, d), com n amostras por trecho."""
+    P = np.asarray(pts, float)
+    P = np.vstack([2 * P[0] - P[1], P, 2 * P[-1] - P[-2]])
+    saida = []
+    for i in range(1, len(P) - 2):
+        p0, p1, p2, p3 = P[i - 1:i + 3]
+        for s in np.linspace(0.0, 1.0, n, endpoint=False):
+            saida.append(0.5 * (2 * p1 + (p2 - p0) * s
+                                + (2 * p0 - 5 * p1 + 4 * p2 - p3) * s ** 2
+                                + (3 * p1 - p0 - 3 * p2 + p3) * s ** 3))
+    saida.append(P[-2])
+    return np.array(saida)
+
+
+def _estrada_eixo(g):
+    """Eixo da estrada, pontos (a, d), ou None se a pose nao comportar.
+
+    Sai da borda de baixo da tela mais baixa (o notebook), na metade dela, e
+    sobe para o fundo pelo lado de FORA, longe do vao e do oval, ate a casa do
+    fundo. Pontos dados como fracao do chao visivel, como o resto da maquete;
+    com o notebook a esquerda as fracoes espelham.
+    """
+    if len(g.telas) < 2:
+        return None
+    lado = g.ordem.index(1 - g.alta)
+    pontos = []
+    for f, prof in ((0.46, 0.0), (0.52, 0.10), (0.64, 0.20), (0.72, 0.31),
+                    (0.76, 0.41)):
+        p = g.no_chao(lado, f if lado == 1 else 1.0 - f, prof, 0.03)
+        if p is None:
+            return None
+        pontos.append((p[0], p[2]))
+    # Comeca na frente da tela: o recorte do portal corta exatamente na borda
+    # de baixo, e a estrada sai de dentro da moldura.
+    pontos.insert(0, (pontos[0][0], g.d_frente))
+    return _curva(pontos)
+
+
+def build_estrada(g):
+    """Estrada de terra no chao: casca, um quadrilatero por amostra do eixo.
+
+    Quadrilateros e nao um poligono so pelo mesmo motivo do ceu: o recorte
+    pelo plano de uma tela so e certo em poligono convexo. A borda na mesma
+    cor fecha a costura do antialias entre eles.
+    """
+    eixo = _estrada_eixo(g)
+    if eixo is None:
+        return []
+    tang = np.gradient(eixo, axis=0)
+    lado = np.stack([tang[:, 1], -tang[:, 0]], 1)
+    lado *= (LARG_ESTRADA / 2) / np.linalg.norm(lado, axis=1)[:, None]
+    e, d = eixo + lado, eixo - lado
+    h = g.h_piso + 0.0004          # abaixo dos trilhos (0.8 mm), acima da grama
+    return [_chapa([(e[i][0], h, e[i][1]), (e[i + 1][0], h, e[i + 1][1]),
+                    (d[i + 1][0], h, d[i + 1][1]), (d[i][0], h, d[i][1])], ESTRADA)
+            for i in range(len(eixo) - 1)]
+
+
 def build_maquete(g, oval):
     """Casas, arvores, moinho, lago e montanhas, posicionados pela tela.
 
     Cada item diz em que tela deve aparecer (0 esquerda, 1 direita), em que
     fracao do chao visivel dela e a quantos metros atras da juncao. Assim a
-    maquete se ajusta sozinha a outra pose sem sair do campo de visao.
+    maquete se ajusta sozinha a outra pose sem sair do campo de visao. O que
+    cairia em cima do trilho ou da estrada e pulado.
     """
     objs = []
     # Montanhas no pe do ceu, ao longo do contorno: a parede esquerda e o
@@ -554,9 +617,13 @@ def build_maquete(g, oval):
         dentro = 0.004 * np.array([np.cos(phi), np.sin(phi)])
         objs += _montanha(a + dentro[0], g.h_piso, d + dentro[1], raio, alt, phi)
 
+    eixo = _estrada_eixo(g)
+
     def ponto(lado, fracao, prof, folga=0.03):
         p = g.no_chao(lado, fracao, prof, folga)
         if p is None or oval.perto(p, 0.035):
+            return None
+        if eixo is not None and np.hypot(*(eixo - p[[0, 2]]).T).min() < 0.03:
             return None
         return p
 
@@ -571,9 +638,12 @@ def build_maquete(g, oval):
             continue
         objs += scn._casa(p + [0, al / 2, 0], giro, lg, al, pr)
         objs.append(_sombra(p, max(lg, pr) * 0.62))
+    # As do notebook descem ate a frente, que e a metade de baixo dele: sem
+    # elas essa metade era so grama.
     arvores = [(0, 0.05, 0.40, 0.095), (0, 0.42, 0.55, 0.085), (0, 0.92, 0.42, 0.075),
                (1, 0.05, 0.42, 0.080), (1, 0.55, 0.53, 0.090), (1, 0.97, 0.30, 0.085),
-               (1, 0.10, 0.10, 0.070), (1, 0.62, 0.05, 0.065), (1, 0.50, 0.26, 0.060)]
+               (1, 0.04, 0.17, 0.070), (1, 0.64, 0.04, 0.065), (1, 0.48, 0.25, 0.060),
+               (1, 0.90, -0.03, 0.075), (1, 0.30, -0.04, 0.060)]
     for lado, f, prof, alt in arvores:
         p = ponto(lado, f, prof)
         if p is None:
@@ -584,9 +654,9 @@ def build_maquete(g, oval):
     if m is not None:
         objs += _moinho(m, -0.5, MOINHO_K)
         objs.append(_sombra(m, 0.028))
-    p = g.no_chao(1, 0.45, 0.13, 0.05)
+    p = g.no_chao(1, 0.20, 0.06, 0.05)
     if p is not None:
-        objs += _lago(p, 0.065)
+        objs += _lago(p, 0.060)
     return objs
 
 
@@ -737,7 +807,7 @@ def build(telas):
     """Parte estatica: casca, pista, peitoril e maquete, ja no mundo."""
     g = geometria(telas)
     oval = _oval(g)
-    objs = build_casca(g) + build_trilhos(oval)
+    objs = build_casca(g) + build_estrada(g) + build_trilhos(oval)
     objs += build_peitoril(g) + build_maquete(g, oval)
     return _para_mundo(objs, g)
 
