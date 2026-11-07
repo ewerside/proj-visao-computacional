@@ -22,7 +22,7 @@ import numpy as np
 
 import scene as scn
 
-CENAS_MUNDO = ["sala", "alinhamento"]
+CENAS_MUNDO = ["janelas", "sala", "alinhamento"]
 
 GRADE_SALA = (110, 95, 80)
 GRADE_CHAO = (90, 120, 95)
@@ -225,12 +225,20 @@ def build_alinhamento(telas):
 
 
 def build(nome, telas):
+    if nome == "janelas":
+        # Import tardio: janelas.py usa os ajudantes deste modulo (juncao,
+        # _grade), e importar la em cima seria um import circular.
+        import janelas
+        return janelas.build(telas)
     if nome == "sala":
         return build_sala(telas)
     return build_alinhamento(telas)
 
 
 def dinamico(nome, t, telas):
+    if nome == "janelas":
+        import janelas
+        return janelas.dinamico(t, telas)
     if nome == "sala":
         return dinamico_sala(t, telas)
     return []
