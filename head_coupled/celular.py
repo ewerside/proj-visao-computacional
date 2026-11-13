@@ -294,7 +294,8 @@ class Servidor:
             else:
                 nome = "(descartada)"
             self.fotos.append({"nome": nome, "notebook": na, "monitor": nb, "boa": boa,
-                               "tam": [int(img.shape[1]), int(img.shape[0])]})
+                               "tam": [int(img.shape[1]), int(img.shape[0])],
+                               "kb": len(dados) // 1000, "hora": time.strftime("%H:%M:%S")})
             self.recebidas[marca] = self.fotos[-1]
         return {**self.estado(), "aviso": aviso, "ultima": self.fotos[-1]}
 
@@ -435,3 +436,81 @@ $('rec').addEventListener('click', () => { if(confirm('Apagar a contagem e recom
 pedir('estado');
 </script></body></html>
 """
+
+
+def _teste(argv=None):
+    """Teste so do envio, sem monitor externo e sem calibrar:
+
+        python celular.py [--tunel]
+
+    Abre o servidor (e o tunel), mostra o QR code numa janela e lista no
+    terminal cada foto que chegar, com o tamanho e o tempo desde a anterior.
+    As fotos nao sao guardadas (sem os padroes na tela nenhuma serve para a
+    calibracao). q ou ESC na janela encerra.
+    """
+    import argparse
+    import tempfile
+
+    import padroes
+
+    ap = argparse.ArgumentParser(description="teste do envio de fotos pelo celular")
+    ap.add_argument("--tunel", action="store_true", help="acesso pela internet (ssh)")
+    ap.add_argument("--tunel-servico", choices=list(TUNEIS), default=None)
+    ap.add_argument("--porta", type=int, default=PORTA)
+    args = ap.parse_args(argv)
+
+    def sem_calculo(_pasta):
+        raise SystemExit("modo de teste: aqui so o envio e testado")
+
+    srv = Servidor(os.path.join(tempfile.gettempdir(), "celular_teste"), sem_calculo,
+                   args.porta, host="127.0.0.1" if args.tunel else "0.0.0.0")
+    srv.definir_padroes(padroes.padroes_projeto())
+    tunel = None
+    if args.tunel:
+        print("abrindo o tunel pela internet...")
+        try:
+            tunel, publico, servico = abrir_tunel(srv.porta, args.tunel_servico)
+        except RuntimeError as e:
+            print(e)
+            return 1
+        srv.url = f"{publico}/{srv.token}/"
+        print(f"tunel aberto por {servico}")
+    srv.iniciar()
+    print(f"\nNo celular, leia o QR code da janela ou abra:\n    {srv.url}\n"
+          "Tire algumas fotos pela pagina (de qualquer coisa). Vao aparecer como\n"
+          "descartadas, porque nao ha padroes na tela: aqui so o envio importa.\n"
+          "q ou ESC na janela do QR encerra.\n")
+    qr = imagem_qr(srv.url, 560)
+    tela = np.full((660, 600, 3), 255, np.uint8)
+    tela[20:580, 20:580] = qr
+    cv2.putText(tela, "Leia com a camera do celular   (q sai)", (20, 630),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 0), 2, cv2.LINE_AA)
+    vistas, t_ant, conectou = 0, time.time(), False
+    try:
+        while True:
+            cv2.imshow("teste do celular", tela)
+            if cv2.waitKey(200) & 0xFF in (ord("q"), 27):
+                break
+            if cv2.getWindowProperty("teste do celular", cv2.WND_PROP_VISIBLE) < 1:
+                break
+            if srv.conectado and not conectou:
+                conectou, t_ant = True, time.time()
+                print("celular abriu a pagina")
+            while vistas < len(srv.fotos):
+                f = srv.fotos[vistas]
+                vistas += 1
+                agora = time.time()
+                print(f"  foto {vistas}: {f['kb'] / 1000:.1f} MB, {f['tam'][0]}x{f['tam'][1]}, "
+                      f"chegou as {f['hora']} ({agora - t_ant:.0f} s depois da anterior)")
+                t_ant = agora
+    finally:
+        cv2.destroyAllWindows()
+        srv.parar()
+        if tunel is not None:
+            tunel.terminate()
+    print(f"{vistas} foto(s) recebida(s)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_teste())
