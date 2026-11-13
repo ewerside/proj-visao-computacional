@@ -1,4 +1,4 @@
-# Head-Coupled Perspective em duas telas — Visão Computacional
+# Parallax — Head-Coupled Perspective em duas telas
 
 Projeto da disciplina **Visão Computacional (IBM3131)** do **Ibmec Barra**, ministrada pelo professor **Rigel Fernandes**.
 
@@ -7,6 +7,28 @@ Projeto da disciplina **Visão Computacional (IBM3131)** do **Ibmec Barra**, min
 **Artigo:** *Smartphone-Assisted Calibration of Multi-Screen Display Geometry for Head-Coupled Perspective Rendering* (modelo SBrT 2027).
 
 ---
+
+![Menu do Parallax](docs/imagens/menu/menu_inicio.png)
+
+## Como usar
+
+Dois cliques em **`Parallax.bat`**, na raiz do repositório (Windows). Tudo é feito pelo menu, com o mouse:
+
+| Botão | O que faz |
+|---|---|
+| **Uma tela** | Quatro cenas no notebook: Cubos, Corredor, Vila e Asteroides. Uma chave liga o 3D anáglifo (óculos vermelho-ciano), que só existe com uma tela e sempre começa com a menor separação entre as imagens; `[` e `]` ajustam. |
+| **Duas telas** | Trem e Planeta, o mesmo mundo visto pelo notebook e pelo monitor. Só abre depois da calibração e com o monitor ligado. |
+| **Calibrar telas** | Mostra os padrões nas duas telas e um QR code. O celular abre uma página, tira as fotos e manda direto; a página confere cada foto, mostra o progresso e, no fim, a posição das telas. |
+| **Configurações** | Medidas da tela do notebook, diagonal do monitor, conexão do celular e calibração da webcam. O padrão é o notebook do projeto (tela de 15,6 pol); só mude se o seu equipamento for outro. |
+
+Dentro de uma cena: `Esc` volta ao menu, `N` troca de cena, `Espaço` congela o olho, `D` mostra os detalhes (posição do olho, fps).
+
+Na primeira vez, prepare o ambiente (Python 3.12 ou mais novo):
+
+```bash
+py -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+```
 
 ## O que é o projeto
 
@@ -48,6 +70,7 @@ O projeto tem duas partes:
 | Python | 3.14 | linguagem |
 | OpenCV (`opencv-contrib-python`) | 5.0 | captura da webcam, janelas, desenho 2D, detecção dos marcadores ArUco/ChArUco, `calibrateCamera` e `solvePnP` |
 | MediaPipe (Face Landmarker, `face_landmarker.task`) | 1.2 | 478 pontos do rosto, centro das íris e rotação da cabeça |
+| Pillow | 13.0 | texto com fonte TrueType no menu do Parallax |
 | NumPy | 2.5 | geometria e álgebra linear |
 | SciPy | 1.18 | `least_squares` (otimizador do ajuste de feixes) e rotações |
 
@@ -62,14 +85,15 @@ As bibliotecas acima entregam peças soltas: pontos do rosto, cantos de marcador
 | `tracking.py` | Posição 3D da cabeça pela distância entre as íris; correção de guinada (`fator_escorco`) | O MediaPipe devolve pontos na imagem, não a posição do olho em metros. Sem a correção, virar a cabeça 30° faz a distância errar ~15% |
 | `calibrate.py` | Calibração da distância focal da webcam com a própria pessoa a uma distância conhecida | Evita tabuleiro impresso para a webcam |
 | `filters.py` | Filtro One Euro | Implementação própria do filtro publicado; não usamos pacote pronto |
-| `scene.py`, `telas.py` | Projeção off-axis, recorte pelo plano da tela, ordenação e desenho em lote das cenas 3D | O OpenCV só desenha em 2D. Não usamos OpenGL nem motor gráfico |
-| `sala.py`, `janelas.py` | Cenas de mundo compartilhado: `janelas` (maquete com trem que passa de uma tela para a outra), `sala` e `alinhamento` | Mostram o mesmo mundo pelas duas telas; a `alinhamento` serve para conferir a calibração a olho |
+| `scene.py`, `telas.py` | Projeção off-axis, recorte pelo plano da tela, ordenação e desenho em lote das cenas 3D; cenas Cubos, Corredor, Vila e Asteroides | O OpenCV só desenha em 2D. Não usamos OpenGL nem motor gráfico |
+| `parallax.py` | Menu do programa: seletores de cenas com prévia, calibração com status, configurações | Uso na apresentação sem linha de comando |
+| `sala.py`, `janelas.py`, `planeta.py` | Cenas de mundo compartilhado: Trem (maquete com trem que passa de uma tela para a outra), Planeta (gigante gasoso com anéis e luas atrás da junção), `sala` e `alinhamento` | Mostram o mesmo mundo pelas duas telas; a `alinhamento` serve para conferir a calibração a olho |
 | `monitores.py` | Lista de monitores, escala de tela (DPI por monitor) e janela em tela cheia em cada monitor, via `ctypes` | Com escala de 125% ou 150% do Windows as janelas do OpenCV saíam com tamanho errado |
 | `padroes.py` | Tabuleiros ChArUco desenhados pixel a pixel na tela, com IDs diferentes por tela e tamanho físico derivado do painel | O padrão de calibração é a própria tela, não um papel impresso |
 | `detectar.py` | Detecção dos cantos nas fotos de 12 MP e descarte de detecções inconsistentes | Fotos de tela têm moiré, reflexo e marcadores parciais |
 | `calibracao.py` | Média robusta de poses e **ajuste de feixes** próprio (jacobiano esparso, perda de Huber, estimativa do tamanho do monitor e da incerteza) | O OpenCV calibra uma câmera, mas não impõe que as duas telas estão paradas uma em relação à outra |
 | `calibrar_telas.py` | Fluxo completo `mostrar` / `calcular` / `manual`, avisos de qualidade e vista de cima (`dbg/planta.png`) | Uso em poucos minutos, sem app no celular |
-| `celular.py` | Servidor local e página web para o celular: QR code na tela, foto pela câmera nativa, conferência imediata dos cantos e cálculo pelo celular | Elimina a cópia manual das fotos e avisa na hora se uma foto não serve |
+| `celular.py` | Servidor local e página web para o celular: QR code na tela, foto pela câmera nativa, conferência imediata dos cantos, barra de progresso, cálculo pelo celular e prévia da posição das telas; túnel `ssh` para quando os aparelhos não se enxergam na rede | Elimina a cópia manual das fotos e avisa na hora se uma foto não serve |
 | `simular.py` | Simulador de fotos de celular (desfoque, ruído, moiré, reflexo, JPEG) com resposta conhecida | Permite medir o erro da calibração sem hardware |
 | `avaliar.py` | Avaliação quantitativa: compara os estimadores em fotos simuladas e em fotos reais | É a comparação de métodos do artigo |
 | `anaglyph.py` | Modo anáglifo vermelho-ciano (bônus) | Estereoscopia com óculos de papelão |
@@ -102,9 +126,9 @@ python avaliar.py real          # repetibilidade nas fotos reais em head_coupled
 
 O ajuste de feixes é seis vezes mais estável que a média por foto. O tamanho estimado do monitor (51,0 × 28,7 cm, 23,0 pol) coincide com o que o próprio monitor informa ao Windows (509 × 286 mm). Erro de reprojeção: 1,13 px.
 
-## Como rodar
+## Linha de comando (opcional)
 
-Desenvolvido e testado em **Windows**. O passo a passo completo, do zero, está em [`docs/TESTE_AP2.md`](docs/TESTE_AP2.md).
+O menu cobre tudo. Os comandos abaixo são os mesmos programas, para quem quiser rodar por partes. Desenvolvido e testado em **Windows**; o passo a passo do zero está em [`docs/TESTE_AP2.md`](docs/TESTE_AP2.md).
 
 ```bash
 pip install -r requirements.txt     # NAO instale opencv-python junto (ver requirements.txt)
@@ -142,15 +166,24 @@ Teclas principais do `main.py`: `n` troca de cena, `d` painel de debug (posiçã
 
 | Arquivo | Função |
 |---|---|
+| `parallax.py` (e `Parallax.bat`) | Menu do programa |
 | `main.py` | Laço principal: webcam → posição da cabeça → desenho em uma ou duas telas |
 | `tracking.py`, `filters.py`, `calibrate.py` | Rastreamento dos olhos, filtro e calibração da webcam |
-| `scene.py`, `sala.py`, `janelas.py`, `anaglyph.py` | Cenas e projeção |
+| `scene.py`, `sala.py`, `janelas.py`, `planeta.py`, `anaglyph.py` | Cenas e projeção |
 | `telas.py`, `monitores.py`, `testar_monitores.py` | Pose de cada tela, monitores do Windows e teste das janelas |
 | `calibrar_telas.py`, `padroes.py`, `detectar.py`, `calibracao.py` | Calibração das duas telas pelas fotos do celular |
 | `simular.py`, `avaliar.py`, `teste_guinada.py` | Simulador de fotos, avaliação quantitativa e teste da correção de guinada |
 | `config.py` | Medidas físicas e parâmetros |
 | `testes/` | Testes automáticos |
-| `docs/` | Guia de teste passo a passo e decisões de projeto |
+| `docs/` | Relatório de tecnologia, guia de teste, guia dos slides, decisões de projeto e imagens |
+| `artigo/` | Fonte LaTeX do artigo (modelo SBrT) |
+
+## Documentos
+
+- [`docs/RELATORIO_TECNOLOGIA.md`](docs/RELATORIO_TECNOLOGIA.md): todas as técnicas de visão computacional e de matemática do projeto, do rastreamento do rosto à exibição em duas telas, e as referências realmente usadas.
+- [`docs/GUIA_SLIDES.md`](docs/GUIA_SLIDES.md): roteiro para montar a apresentação.
+- [`docs/imagens/`](docs/imagens/): fotos, renders, telas e gráficos para o artigo e os slides.
+- [`artigo/`](artigo/): o artigo.
 
 ## Limitações e trabalhos futuros
 
