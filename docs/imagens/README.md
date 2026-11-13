@@ -8,6 +8,7 @@ Tudo o que serve de figura está aqui. As fotos são reais, tiradas na faculdade
 | `calibracao_fotos/` | As 12 fotos originais (Pixel 7 Pro, 4080×3072) da calibração feita na faculdade (sessão 2 do artigo) | Enviadas pela página do celular |
 | `calibracao_cantos/` | Fotos com os cantos detectados (amarelo: notebook; azul: monitor), a vista de cima (`vista_de_cima.png`), o padrão ChArUco, o padrão com QR code, uma foto simulada e o `telas_faculdade.json` | `calibrar_telas.py calcular` e `simular.py` |
 | `cenas/` | Renders das cenas de uma tela (olho no centro, à direita e à esquerda), da cena de asteroides em anáglifo e das cenas de duas telas (notebook e monitor lado a lado) | `scene.py`, `sala.py`, `planeta.py`, `janelas.py` |
+| `demo/` | GIF da demonstração nas duas telas (cena do trem) | Vídeo do grupo, 13/11/2026 |
 | `menu/` | As seis telas do Parallax | `parallax.py` |
 | `celular/` | A página do celular fotografando e mostrando o resultado com a prévia das telas | `celular.py` |
 | `graficos/` | Erro simulado por número de fotos e repetibilidade nas fotos reais das duas sessões, com os dados (`dados/`), as tabelas em CSV e o script que gera os dois | `avaliar.py` e `gerar_graficos.py` |

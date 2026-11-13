@@ -10,6 +10,10 @@ Projeto da disciplina **Visão Computacional (IBM3131)** do **Ibmec Barra**, min
 
 ![Menu do Parallax](docs/imagens/menu/menu_inicio.png)
 
+**Demonstração** (a cena do trem nas duas telas, gravada com o celular ao lado do rosto):
+
+<img src="docs/imagens/demo/demonstracao.gif" alt="Demonstração do Parallax em duas telas" width="300">
+
 ## Como usar
 
 Dois cliques em **`Parallax.bat`**, na raiz do repositório (Windows). Tudo é feito pelo menu, com o mouse:
