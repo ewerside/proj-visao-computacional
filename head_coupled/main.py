@@ -24,7 +24,7 @@ Estereo:
 Varias telas (AP2): com um telas.json ao lado deste arquivo (gerado pelo
 calibrar_telas.py, ver telas.py), abre uma janela fullscreen por tela, cada uma
 no seu monitor. Os cenarios do AP1 ganham uma caixa por tela, e a tecla n passa
-tambem pelos cenarios do mundo compartilhado (sala, alinhamento). Sem
+tambem pelos cenarios do mundo compartilhado (janelas, sala, alinhamento). Sem
 telas.json, ou com --uma-tela, e o AP1 de sempre, uma tela so.
 
     python main.py                  usa o telas.json, se existir

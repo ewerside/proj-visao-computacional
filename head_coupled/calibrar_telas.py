@@ -377,6 +377,9 @@ def calcular(fotos, caminho_padroes=None, saida=None, fixar_escala_b=False,
     if q["dispersao_entre_fotos"]["trans_mm"] > 5:
         avisos.append("as fotos discordam entre si (dispersao "
                       f"{q['dispersao_entre_fotos']['trans_mm']} mm): algo mexeu?")
+    if cal.ba is not None and not cal.ba.sucesso:
+        avisos.append("o ajuste de feixes nao convergiu: o resultado pode estar longe do "
+                      "certo. Tire fotos de pontos de vista mais variados")
     if n_duas < 6:
         avisos.append(f"so {n_duas} fotos com as duas telas: tire 10 a 15")
     diag_nom = dados_pad.get("diagonal_pol_nominal")

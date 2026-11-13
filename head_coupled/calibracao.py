@@ -259,6 +259,10 @@ def ajuste_feixes(fotos_det, K, dist, poses_ini, R_AB, t_AB, refinar_intr=True,
     S = S.tocsr()
     sol = least_squares(residuos, x0, jac_sparsity=S, method="trf", loss="linear",
                         x_scale="jac", max_nfev=500)
+    # "Convergiu" e o da etapa linear. A etapa robusta, em fotos reais, costuma
+    # parar no limite de avaliacoes ainda rastejando (medido: 4x mais iteracoes
+    # mudam a pose em 0.01 mm), e isso nao e falha.
+    convergiu = bool(sol.success)
     if perda != "linear":
         # Partindo do minimo linear converge em poucas iteracoes quando o modelo
         # esta certo; com modelo errado (tamanho de B fixo e errado) iterar mais
@@ -287,7 +291,7 @@ def ajuste_feixes(fotos_det, K, dist, poses_ini, R_AB, t_AB, refinar_intr=True,
     poses = {j: (Rotation.from_rotvec(cams[k, :3]).as_matrix(), cams[k, 3:].copy())
              for k, j in enumerate(fotos)}
     return ResultadoBA(intr, Rb, tb, float(s), poses, rms, rms_t, sig_r, sig_t, sig_s,
-                       m, float(sol.cost), bool(sol.success))
+                       m, float(sol.cost), convergiu)
 
 
 # --------------------------------------------------------------- pipeline
@@ -425,6 +429,7 @@ def telas_json(padroes, cal, tam_foto, extra=None):
                 "rot_graus": round(ba.sigma_rot_graus, 4), "trans_mm": round(ba.sigma_trans_mm, 3),
                 "escala": None if math.isnan(ba.sigma_escala) else round(ba.sigma_escala, 5)},
             "escala_B_estimada": None if ba is None else round(ba.escala_B, 5),
+            "ajuste_convergiu": None if ba is None else ba.sucesso,
         },
         "camera_celular": {"tamanho_px": list(tam_foto),
                            "K": np.round(cal.K if ba is None else _K(ba.intr), 3).tolist(),

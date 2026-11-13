@@ -2,7 +2,7 @@
 
 O notebook, cuja webcam faz o rastreamento dos olhos, e um monitor externo ligado a ele em modo "Estender", em qualquer ângulo, mostram o mesmo mundo 3D. Um celular Android tira fotos das duas telas exibindo padrões ChArUco, e o programa calcula onde o monitor está em relação ao notebook. A partir daí as duas imagens mudam juntas, em tempo real, com a posição dos olhos.
 
-Todo o código está implementado e testado sem hardware (`python head_coupled/testes/rodar_testes.py`). O que falta é testar no notebook com o monitor de verdade: veja o guia [`TESTE_AP2.md`](TESTE_AP2.md).
+O código está implementado e testado sem hardware (`python head_coupled/testes/rodar_testes.py`) e já rodou no notebook com um monitor externo. O passo a passo está no guia [`TESTE_AP2.md`](TESTE_AP2.md).
 
 ## Fluxo de uso
 
@@ -25,7 +25,7 @@ Todo o código está implementado e testado sem hardware (`python head_coupled/t
 | Pose do monitor | PnP por foto → média robusta → ajuste de feixes (`scipy`) | Simulação: ~0,2 mm típico, ≤ 2,3 mm no pior caso |
 | Referencial | Tela do notebook, o mesmo da AP1 | O rastreamento da AP1 não muda |
 | Desenho | Um programa, uma janela em tela cheia por monitor, uma ordem de pintura para as duas | Oclusão e cor iguais dos dois lados da junção |
-| Cenas | Cenas da AP1 com uma caixa por tela + `sala` e `alinhamento` (mundo compartilhado, recorte pelo plano de cada tela) | A primeira funciona de cara; a segunda mostra se a calibração está certa |
+| Cenas | Cenas da AP1 com uma caixa por tela + `janelas`, `sala` e `alinhamento` (mundo compartilhado, recorte pelo plano de cada tela) | A primeira funciona de cara; a segunda mostra se a calibração está certa |
 | Guinada | Correção pela rotação da cabeça do MediaPipe (tecla `y`) | Sem correção: +5 a +12 cm de erro em Z ao olhar o monitor |
 | Windows | DPI Per-Monitor v2 antes de qualquer janela; monitores via `ctypes` | Com escala de 125%/150% as janelas saíam com tamanho errado e esticadas |
 | Dependências | `requirements.txt` sem `opencv-python` | O mediapipe já traz o `opencv-contrib-python`; dois OpenCV na mesma pasta quebram |
@@ -49,7 +49,8 @@ Todo o código está implementado e testado sem hardware (`python head_coupled/t
 | `monitores.py` | DPI, lista de monitores (`ctypes`), escolha do monitor do notebook, janela em tela cheia num monitor |
 | `testar_monitores.py` | Teste de 15 min no hardware: moldura de 1 px, xadrez de 1 px, teclas, qual é o notebook |
 | `telas.py` | `Tela` com pose `x_notebook = R @ x_tela + t`, `telas.json`, projeção, recorte pelo plano da tela, desenho em lote |
-| `sala.py` | Cenas de mundo compartilhado (`sala`, `alinhamento`) |
+| `sala.py`, `janelas.py` | Cenas de mundo compartilhado (`janelas`, `sala`, `alinhamento`) |
+| `avaliar.py` | Avaliação quantitativa: compara os estimadores em fotos simuladas e reais |
 | `scene.py` | Cenas da AP1 parametrizadas pelo tamanho da tela; guarda contra coordenadas absurdas |
 | `main.py` | Laço principal: uma janela por tela, `--uma-tela`, `--telas` |
 | `tracking.py` | Correção de guinada (`fator_escorco`) |

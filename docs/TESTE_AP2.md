@@ -34,9 +34,9 @@ Precisa ser 3.12 ou mais nova (a AP1 usou a 3.14). Se der erro, instale o Python
 
 ### 0.3 Baixar o projeto
 ```bash
-git clone --branch claude/wizardly-faraday-xc5k09 https://github.com/ewerside/proj-visao-computacional.git
+git clone https://github.com/ewerside/proj-visao-computacional.git
 ```
-Isso cria a subpasta `proj-visao-computacional`, já com a branch da AP2. Se abrir uma janela de login do GitHub, entre com a conta que tem acesso ao repositório.
+Isso cria a subpasta `proj-visao-computacional`, já com a AP2 (branch `main`). Se abrir uma janela de login do GitHub, entre com a conta que tem acesso ao repositório.
 
 ```bash
 cd proj-visao-computacional
@@ -75,7 +75,7 @@ cd head_coupled
 Todos os comandos daqui para a frente rodam **dentro de `head_coupled`**, com o `(.venv)` ativo.
 
 ### Já tinha um clone da AP1?
-Em vez do `git clone`, entre nele e rode `git fetch origin` e depois `git checkout claude/wizardly-faraday-xc5k09`. Se o checkout reclamar de arquivos que seriam sobrescritos:
+Em vez do `git clone`, entre nele e rode `git fetch origin` e depois `git checkout main` e `git pull`. Se o checkout reclamar de arquivos que seriam sobrescritos:
 - **Em `head_coupled/__pycache__`:** são arquivos gerados que a AP1 tinha versionado por engano. Rode `git restore head_coupled/__pycache__` e repita o checkout.
 - **No `config.py`:** você tem medidas editadas lá. Anote os valores, rode `git stash`, faça o checkout e digite os valores no `config.py` novo.
 
@@ -196,7 +196,7 @@ Isto ainda não usa o celular. Serve para ver as duas telas funcionando e é o p
    python main.py
    ```
 
-   As duas telas devem reagir ao movimento da cabeça. A tecla `n` troca de cena: primeiro as da AP1, com uma caixa em cada tela; depois `sala` e `alinhamento`, um mundo só visto pelas duas telas. Como a trena é imprecisa, é normal haver um pequeno degrau nas retas que cruzam a junção.
+   As duas telas devem reagir ao movimento da cabeça. A tecla `n` troca de cena: primeiro as da AP1, com uma caixa em cada tela; depois `janelas`, `sala` e `alinhamento`, um mundo só visto pelas duas telas. Como a trena é imprecisa, é normal haver um pequeno degrau nas retas que cruzam a junção.
 
 ## 8. VOCÊ: calibração com o celular (15 min)
 
@@ -260,7 +260,7 @@ python main.py
 
 | Tecla | O que faz |
 |---|---|
-| `n` | troca de cena (caixas da AP1 em cada tela → `sala` → `alinhamento`) |
+| `n` | troca de cena (caixas da AP1 em cada tela → `janelas` → `sala` → `alinhamento`) |
 | `d` | painel de debug, só no notebook: posição do olho, fps, guinada |
 | `y` | liga/desliga a correção de guinada |
 | `ESPAÇO` | congela a posição do olho |
