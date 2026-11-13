@@ -4,7 +4,7 @@ Projeto da disciplina **Visão Computacional (IBM3131)** do **Ibmec Barra**, min
 
 **Integrantes do grupo:** Ewerton Arrais, Miguel Veiga e Emilly Fernandes.
 
-**Artigo:** *Smartphone-Assisted Calibration of Multi-Screen Display Geometry for Head-Coupled Perspective Rendering* (modelo SBrT 2027).
+**Artigo:** *Smartphone-Assisted Calibration of a Two-Screen Display for Head-Coupled Perspective Rendering* (modelo SBrT 2027).
 
 ---
 
