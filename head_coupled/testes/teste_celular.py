@@ -102,6 +102,12 @@ def teste_servidor(falhas):
                 break
             time.sleep(0.5)
             r = pedir(raiz + "estado")
+        for _ in range(40):                      # o servidor marca depois de responder
+            if srv.resultado_entregue:
+                break
+            time.sleep(0.05)
+        if not (r.get("resultado") or {}).get("telas"):
+            falhas.append("resultado sem as quinas das telas (previa da pagina)")
         if r.get("erro_calculo") or not r.get("resultado") or not srv.terminou \
                 or not srv.resultado_entregue:
             r["erro"] = r.get("erro_calculo")

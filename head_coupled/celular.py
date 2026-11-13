@@ -331,7 +331,10 @@ class Servidor:
                 res = self.calcular_fn(self.pasta)
             d = res["telas_json"]
             self.resultado = {"resumo": d["resumo"], "qualidade": d["qualidade"],
-                              "avisos": res["avisos"], "n_fotos": res["n_duas_telas"]}
+                              "avisos": res["avisos"], "n_fotos": res["n_duas_telas"],
+                              # para a previa da posicao das telas na pagina
+                              "telas": [{"nome": t["nome"], "quinas": t["quinas_m"]}
+                                        for t in d["telas"]]}
             self.t_terminou = time.time()
             self.terminou = True
         except SystemExit as e:                  # erro legivel do calcular
@@ -344,118 +347,204 @@ class Servidor:
 
 PAGINA = r"""<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Calibrar as telas</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<title>Parallax · calibrar as telas</title>
 <style>
-:root{color-scheme:light dark;--fundo:#f5f5f2;--cartao:#fff;--texto:#1c1c1a;--fraco:#6b6b66;
---ok:#1f7a45;--ruim:#b3371f;--acao:#1d4ed8;--borda:#dcdcd6}
-@media (prefers-color-scheme:dark){:root{--fundo:#161615;--cartao:#222220;--texto:#ecece8;
---fraco:#a3a39c;--ok:#5fd08a;--ruim:#ff8a70;--acao:#7aa2ff;--borda:#3a3a36}}
-*{box-sizing:border-box}
-body{margin:0;padding:16px;font:17px/1.45 system-ui,sans-serif;background:var(--fundo);color:var(--texto)}
-h1{font-size:21px;margin:0 0 4px}
-p{margin:8px 0}
-.fraco{color:var(--fraco);font-size:15px}
-.cartao{background:var(--cartao);border:1px solid var(--borda);border-radius:14px;padding:14px;margin:12px 0}
-.num{font-size:40px;font-weight:700;line-height:1}
-.sug{font-size:19px;font-weight:600}
-.barra{position:relative;height:18px;border-radius:9px;background:var(--borda);margin:14px 0 6px;overflow:hidden}
-.cheio{height:100%;width:0;border-radius:9px;background:var(--acao);transition:width .4s ease,background .4s}
+:root{--fundo:#0d1117;--cartao:#161b22;--borda:#2a313c;--texto:#e6edf3;--fraco:#8b949e;
+--acao:#5b8cff;--acao2:#7c5cff;--ok:#3fb950;--ruim:#ff7b72;--aviso:#d29922}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--fundo);color:var(--texto);
+font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding:18px 16px calc(28px + env(safe-area-inset-bottom));max-width:520px;margin:0 auto}
+header{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
+.marca{font-size:22px;font-weight:800;letter-spacing:.02em;
+background:linear-gradient(90deg,var(--acao),var(--acao2));-webkit-background-clip:text;
+background-clip:text;color:transparent}
+.sub{color:var(--fraco);font-size:14px}
+.passos{display:flex;gap:6px;margin:0 0 14px}
+.passo{flex:1;padding:8px 6px;border-radius:10px;background:var(--cartao);border:1px solid var(--borda);
+font-size:12px;color:var(--fraco);text-align:center;font-weight:600}
+.passo b{display:block;font-size:15px;color:inherit}
+.passo.ativo{border-color:var(--acao);color:var(--texto)}
+.passo.feito{border-color:var(--ok);color:var(--ok)}
+.cartao{background:var(--cartao);border:1px solid var(--borda);border-radius:16px;padding:16px;margin:12px 0}
+.contagem{display:flex;align-items:baseline;gap:8px}
+.num{font-size:46px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.de{color:var(--fraco);font-size:17px}
+.barra{position:relative;height:14px;border-radius:7px;background:#232a34;margin:14px 0 8px;overflow:hidden}
+.cheio{height:100%;width:0;border-radius:7px;background:linear-gradient(90deg,var(--acao),var(--acao2));
+transition:width .45s ease}
 .cheio.pronto{background:var(--ok)}
-.marca{position:absolute;top:0;bottom:0;width:2px;background:var(--texto);opacity:.55}
-button,label.botao{display:block;width:100%;padding:16px;border-radius:12px;border:0;font:inherit;
-font-weight:700;font-size:19px;text-align:center;background:var(--acao);color:#fff;margin:10px 0}
-button.sec,label.sec2{background:transparent;color:var(--acao);border:2px solid var(--acao)}
-button.leve{background:transparent;color:var(--fraco);font-weight:400;font-size:15px;padding:8px}
-button:disabled{opacity:.4}
+.marca-min{position:absolute;top:0;bottom:0;width:2px;background:var(--texto);opacity:.5}
+.falta{color:var(--fraco);font-size:14px;margin:0}
+.rotulo{color:var(--fraco);font-size:12px;text-transform:uppercase;letter-spacing:.08em;margin:16px 0 2px}
+.sug{font-size:20px;font-weight:700;margin:0 0 14px}
+.botao{display:block;width:100%;padding:17px;border-radius:14px;border:0;font:inherit;font-weight:800;
+font-size:19px;text-align:center;color:#fff;background:linear-gradient(90deg,var(--acao),var(--acao2));
+box-shadow:0 6px 20px rgba(91,140,255,.28)}
+.botao:active{transform:scale(.985)}
+.botao.sec{background:transparent;box-shadow:none;border:2px solid var(--acao);color:var(--acao);margin-top:10px}
+.botao:disabled,.botao.inativo{opacity:.35;box-shadow:none}
 input[type=file]{display:none}
+.ultimo{display:none;margin:12px 0 0;padding:10px 12px;border-radius:12px;font-size:14px;font-weight:600}
+.ultimo.ok{display:block;background:rgba(63,185,80,.12);color:var(--ok)}
+.ultimo.ruim{display:block;background:rgba(255,123,114,.12);color:var(--ruim)}
+.ultimo.info{display:block;background:rgba(91,140,255,.12);color:var(--acao)}
+details{margin-top:4px}
+summary{color:var(--fraco);font-size:14px;padding:6px 0;cursor:pointer}
 ul{list-style:none;margin:0;padding:0}
-li{padding:6px 0;border-top:1px solid var(--borda);font-size:15px;font-variant-numeric:tabular-nums}
-.ok{color:var(--ok)} .ruim{color:var(--ruim)}
-#aviso{font-weight:600}
-table{width:100%;border-collapse:collapse;font-size:15px}
-td{padding:4px 0;border-top:1px solid var(--borda)} td:last-child{text-align:right;font-weight:600}
+li{padding:6px 0;border-top:1px solid var(--borda);font-size:14px;font-variant-numeric:tabular-nums}
+li.ok{color:var(--ok)} li.ruim{color:var(--ruim)}
+.leve{background:none;border:0;color:var(--fraco);font:inherit;font-size:13px;padding:10px 0 0;width:100%}
+h2{font-size:19px;margin:0 0 10px}
+svg{width:100%;height:auto;display:block;border-radius:12px;background:#0b0f14;border:1px solid var(--borda)}
+.legenda{display:flex;gap:14px;font-size:12px;color:var(--fraco);margin:8px 0 12px}
+.legenda i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td{padding:6px 0;border-top:1px solid var(--borda)} td:last-child{text-align:right;font-weight:700}
+.avisos p{margin:8px 0 0;color:var(--aviso);font-size:14px}
+.dicas{color:var(--fraco);font-size:13px;margin:0;padding-left:18px}
+.dicas li{border:0;padding:2px 0;font-size:13px}
+.gira{display:inline-block;width:16px;height:16px;border:3px solid rgba(255,255,255,.35);
+border-top-color:#fff;border-radius:50%;animation:g 1s linear infinite;vertical-align:-2px;margin-right:8px}
+@keyframes g{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.gira{animation:none}.cheio{transition:none}}
 </style></head><body>
-<h1>Calibrar as duas telas</h1>
-<p class="fraco">Celular deitado, lente 1x, as duas telas inteiras no quadro. Mude de lugar a cada foto.</p>
+<header><span class="marca">Parallax</span><span class="sub">calibrar as duas telas</span></header>
 
-<div class="cartao">
-  <div class="num"><span id="boas">0</span><span class="fraco" style="font-size:19px"> de <span id="ideal">12</span> fotos boas</span></div>
+<div class="passos">
+  <div class="passo ativo" id="p1"><b>1</b>Fotografar</div>
+  <div class="passo" id="p2"><b>2</b>Calcular</div>
+  <div class="passo" id="p3"><b>3</b>Pronto</div>
+</div>
+
+<div class="cartao" id="captura">
+  <div class="contagem"><span class="num" id="boas">0</span><span class="de">de <span id="ideal">12</span> fotos boas</span></div>
   <div class="barra" role="progressbar" aria-valuemin="0" id="barra">
-    <div class="cheio" id="cheio"></div><div class="marca" id="marca"></div></div>
-  <p id="falta" class="fraco">Tire a primeira foto.</p>
-  <p class="fraco">Pr&oacute;xima foto:</p>
+    <div class="cheio" id="cheio"></div><div class="marca-min" id="marca"></div></div>
+  <p class="falta" id="falta">Tire a primeira foto.</p>
+  <p class="rotulo">Próxima foto</p>
   <p class="sug" id="sug">de frente, no meio das duas telas</p>
-  <label class="botao" id="rotulo">Tirar foto
+  <label class="botao" id="rotulo"><span id="txtfoto">Tirar foto</span>
     <input type="file" id="arq" accept="image/*" capture="environment"></label>
-  <label class="botao sec2" id="rotulo2">Enviar várias da galeria
-    <input type="file" id="varias" accept="image/*" multiple></label>
-  <p id="aviso" class="ruim"></p>
-  <button id="calc" class="sec" disabled>Calcular</button>
+  <div class="ultimo" id="ultimo"></div>
+  <button class="botao sec" id="calc" disabled>Calcular</button>
 </div>
 
 <div class="cartao" id="res" hidden>
-  <h1 id="restit">Calibra&ccedil;&atilde;o pronta</h1>
+  <h2 id="restit">Calibração pronta</h2>
+  <svg id="planta" viewBox="0 0 340 190" role="img" aria-label="Posição das telas vista de cima"></svg>
+  <div class="legenda"><span><i style="background:#5b8cff"></i>notebook</span>
+    <span><i style="background:#3fb950"></i>monitor</span><span><i style="background:#e6edf3;border-radius:50%"></i>você</span></div>
   <table id="tab"></table>
-  <div id="avisos"></div>
-  <p class="fraco">No notebook, rode <b>python main.py</b>. Pode fechar esta p&aacute;gina.</p>
+  <div class="avisos" id="avisos"></div>
+  <p class="falta" style="margin-top:12px">No notebook, o Parallax já voltou ao menu. Pode fechar esta página.</p>
 </div>
 
-<div class="cartao"><ul id="lista"><li class="fraco">Nenhuma foto ainda.</li></ul>
-<button id="rec" class="leve">Recome&ccedil;ar do zero</button></div>
+<div class="cartao">
+  <ul class="dicas">
+    <li>Celular deitado, lente 1x, sem zoom.</li>
+    <li>As duas telas inteiras no quadro.</li>
+    <li>Parado na hora do clique, e mude de lugar a cada foto.</li>
+  </ul>
+  <details><summary id="resumo">Fotos enviadas</summary><ul id="lista"></ul></details>
+  <button id="rec" class="leve">Recomeçar do zero</button>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
-let ocupado = false;
+let ocupado = false, espera = null;
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, texto){ const e = document.createElementNS(NS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]); if(texto !== undefined) e.textContent = texto; return e; }
+
+function desenharPlanta(telas){
+  // Vista de cima: x para a direita, z (para quem olha) para baixo.
+  const svg = $('planta'); svg.innerHTML = '';
+  const olho = [0, 0.65];
+  const pts = [olho];
+  telas.forEach(t => t.quinas.forEach(q => pts.push([q[0], q[2]])));
+  const xs = pts.map(p => p[0]), zs = pts.map(p => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
+  const k = Math.min(300 / Math.max(x1 - x0, .01), 140 / Math.max(z1 - z0, .01));
+  const cx = 170 - k * (x0 + x1) / 2, cz = 100 - k * (z0 + z1) / 2;
+  const P = (x, z) => [cx + k * x, cz + k * z];
+  const cores = ['#5b8cff', '#3fb950'];
+  telas.forEach((t, i) => {
+    const a = P(t.quinas[0][0], t.quinas[0][2]), b = P(t.quinas[1][0], t.quinas[1][2]);
+    const o = P(olho[0], olho[1]);
+    svg.appendChild(el('polygon', {points: [a, b, o].map(p => p.join(',')).join(' '),
+      fill: cores[i], opacity: .10}));
+    svg.appendChild(el('line', {x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: cores[i],
+      'stroke-width': 6, 'stroke-linecap': 'round'}));
+    svg.appendChild(el('text', {x: (a[0] + b[0]) / 2, y: Math.min(a[1], b[1]) - 9, fill: cores[i],
+      'font-size': 12, 'font-weight': 700, 'text-anchor': 'middle'}, t.nome));
+  });
+  const o = P(olho[0], olho[1]);
+  svg.appendChild(el('circle', {cx: o[0], cy: o[1], r: 6, fill: '#e6edf3'}));
+  svg.appendChild(el('text', {x: 8, y: 182, fill: '#8b949e', 'font-size': 11}, 'vista de cima'));
+}
+
 function mostrar(e){
-  if(e.erro){ $('aviso').textContent = e.erro; return; }
+  if(e.erro){ ultimo('ruim', e.erro); return; }
   $('boas').textContent = e.boas; $('ideal').textContent = e.ideal;
   $('sug').textContent = e.sugestao;
   const pct = Math.min(100, 100 * e.boas / e.ideal);
   $('cheio').style.width = pct + '%';
   $('cheio').className = 'cheio' + (e.boas >= e.ideal ? ' pronto' : '');
   $('marca').style.left = (100 * e.minimo / e.ideal) + '%';
-  $('barra').setAttribute('aria-valuemax', e.ideal);
-  $('barra').setAttribute('aria-valuenow', e.boas);
+  $('barra').setAttribute('aria-valuemax', e.ideal); $('barra').setAttribute('aria-valuenow', e.boas);
   const plural = n => n + (n === 1 ? ' foto' : ' fotos');
   $('falta').textContent =
     e.boas === 0 ? 'Tire a primeira foto.' :
     e.boas < e.minimo ? 'Faltam ' + plural(e.minimo - e.boas) + ' para poder calcular.' :
     e.boas < e.ideal ? 'Já dá para calcular. Mais ' + plural(e.ideal - e.boas) + ' deixam o resultado melhor.' :
     'Pronto: toque em Calcular.';
-  $('aviso').textContent = e.aviso || '';
   $('calc').disabled = ocupado || e.calculando || e.boas < e.minimo;
-  $('calc').textContent = e.calculando ? 'Calculando… (até 1 minuto)' : 'Calcular';
-  if(e.erro_calculo) $('aviso').textContent = e.erro_calculo;
-  if(e.calculando) setTimeout(() => pedir('estado'), 2000);
+  $('calc').innerHTML = e.calculando ? '<span class="gira"></span>Calculando… até 1 minuto' : 'Calcular';
+  if(e.aviso) ultimo('ruim', e.aviso);
+  else if(e.ultima) ultimo(e.ultima.boa ? 'ok' : 'ruim', e.ultima.boa ?
+    'Foto boa: ' + e.ultima.notebook + ' cantos no notebook, ' + e.ultima.monitor + ' no monitor.' :
+    'Foto descartada.');
+  if(e.erro_calculo) ultimo('ruim', e.erro_calculo);
+  if(e.calculando){ ultimo('info', 'O notebook está calculando a posição do monitor…');
+    clearTimeout(espera); espera = setTimeout(() => pedir('estado'), 2000); }
+
   const l = $('lista'); l.innerHTML = '';
-  if(!e.fotos.length) l.innerHTML = '<li class="fraco">Nenhuma foto ainda.</li>';
-  e.fotos.slice().reverse().forEach((f,i) => {
-    const li = document.createElement('li');
-    li.className = f.boa ? 'ok' : 'ruim';
-    li.textContent = (f.boa ? '✓ ' : '✗ ') + 'Foto ' + (e.fotos.length - i) +
-      ': notebook ' + f.notebook + ' cantos, monitor ' + f.monitor + ' cantos';
+  $('resumo').textContent = 'Fotos enviadas (' + e.fotos.length + ')';
+  e.fotos.slice().reverse().forEach((f, i) => {
+    const li = document.createElement('li'); li.className = f.boa ? 'ok' : 'ruim';
+    li.textContent = (f.boa ? '✓ ' : '✗ ') + 'Foto ' + (e.fotos.length - i) + ': notebook ' +
+      f.notebook + ', monitor ' + f.monitor + ' cantos';
     l.appendChild(li);
   });
-  const r = e.resultado; $('res').hidden = !r;
+
+  const r = e.resultado;
+  $('p1').className = 'passo ' + (r || e.calculando || e.boas >= e.minimo ? 'feito' : 'ativo');
+  $('p2').className = 'passo ' + (r ? 'feito' : (e.calculando || e.boas >= e.minimo ? 'ativo' : ''));
+  $('p3').className = 'passo ' + (r ? 'feito' : '');
+  $('res').hidden = !r; $('captura').hidden = !!r;
   if(r){
-    const g = r.resumo, q = r.qualidade, linhas = [
-      ['Monitor à', g.lado + ' do notebook'],
+    const g = r.resumo, q = r.qualidade;
+    if(r.telas) desenharPlanta(r.telas);
+    const linhas = [['Monitor à', g.lado + ' do notebook'],
       ['Ângulo entre as telas', g.angulo_entre_telas_graus + '°'],
       ['Folga entre as bordas', g.folga_bordas_internas_cm + ' cm'],
       ['Tamanho do monitor', g.monitor_diagonal_pol + ' pol'],
       ['Erro de reprojeção', q.rms_reproj_px + ' px'],
       ['Fotos usadas', r.n_fotos]];
     $('tab').innerHTML = '';
-    linhas.forEach(([a,b]) => { const tr = $('tab').insertRow();
+    linhas.forEach(([a, b]) => { const tr = $('tab').insertRow();
       tr.insertCell().textContent = a; tr.insertCell().textContent = b; });
     $('avisos').innerHTML = '';
     r.avisos.forEach(a => { const p = document.createElement('p');
-      p.className = 'ruim'; p.textContent = 'Aviso: ' + a; $('avisos').appendChild(p); });
+      p.textContent = 'Aviso: ' + a; $('avisos').appendChild(p); });
     $('restit').textContent = r.avisos.length ? 'Calibração pronta, com avisos' : 'Calibração pronta';
-    $('res').scrollIntoView({behavior:'smooth'});
   }
 }
+function ultimo(tipo, texto){ const u = $('ultimo'); u.className = 'ultimo ' + tipo; u.textContent = texto; }
+
 async function pedir(rota, corpo){
   ocupado = true; $('calc').disabled = true;
   for(let tentativa = 1; tentativa <= 3; tentativa++){
@@ -464,29 +553,18 @@ async function pedir(rota, corpo){
       const e = await r.json();
       ocupado = false; mostrar(e); return;
     }catch(err){
-      if(tentativa < 3){
-        $('aviso').textContent = 'Falhou, tentando de novo (' + tentativa + '/3)…';
-        await new Promise(ok => setTimeout(ok, 1500));
-      }
+      if(tentativa < 3){ ultimo('info', 'A conexão falhou, tentando de novo (' + tentativa + '/3)…');
+        await new Promise(ok => setTimeout(ok, 1500)); }
     }
   }
   ocupado = false;
-  $('aviso').textContent = 'Sem conexão com o notebook. Confira a rede do celular e tente de novo.';
+  ultimo('ruim', 'Sem conexão com o notebook. Confira a internet do celular e tente de novo.');
 }
 $('arq').addEventListener('change', async ev => {
   const f = ev.target.files[0]; if(!f) return;
-  $('rotulo').firstChild.textContent = 'Enviando… ';
+  $('txtfoto').innerHTML = '<span class="gira"></span>Enviando…'; $('rotulo').classList.add('inativo');
   await pedir('foto', f);
-  $('rotulo').firstChild.textContent = 'Tirar foto ';
-  ev.target.value = '';
-});
-$('varias').addEventListener('change', async ev => {
-  const lista = Array.from(ev.target.files);
-  for(let i = 0; i < lista.length; i++){
-    $('rotulo2').firstChild.textContent = 'Enviando ' + (i + 1) + ' de ' + lista.length + '… ';
-    await pedir('foto', lista[i]);
-  }
-  $('rotulo2').firstChild.textContent = 'Enviar várias da galeria ';
+  $('txtfoto').textContent = 'Tirar foto'; $('rotulo').classList.remove('inativo');
   ev.target.value = '';
 });
 $('calc').addEventListener('click', () => pedir('calcular', ''));
