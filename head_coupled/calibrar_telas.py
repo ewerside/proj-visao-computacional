@@ -72,7 +72,7 @@ def _rotulo(img_cinza, papel, dispositivo):
     return img
 
 
-def _rotulo_celular(img_cinza, papel, dispositivo, url, qr):
+def _rotulo_celular(img_cinza, papel, dispositivo, url, qr, tunel=False):
     """Rotulo do modo celular: nome da tela e, no notebook, o QR code da pagina."""
     img = cv2.cvtColor(img_cinza, cv2.COLOR_GRAY2BGR)
     h, w = img.shape[:2]
@@ -86,7 +86,9 @@ def _rotulo_celular(img_cinza, papel, dispositivo, url, qr):
         q = cv2.resize(qr, (lado, lado), interpolation=cv2.INTER_NEAREST)
         qx, qy = x1 - lado - int(30 * s), y0 + (y1 - y0 - lado) // 2
         img[qy:qy + lado, qx:qx + lado] = q
-        linhas = ["1. Celular e notebook na mesma rede", "2. Leia o QR code com a camera",
+        rede = "1. Celular com internet (4G/5G ou Wi-Fi)" if tunel else \
+            "1. Celular e notebook na mesma rede"
+        linhas = [rede, "2. Leia o QR code com a camera",
                   "3. Siga a pagina que abrir", url, "t troca as telas     q sai"]
     else:
         linhas = [dispositivo, "O QR code esta na tela do notebook",
@@ -164,7 +166,8 @@ def cmd_mostrar(args, servidor=None):
         import celular
         qr = celular.imagem_qr(servidor.url)
         servidor.iniciar()
-        print(f"\nNo celular (mesma rede do notebook), leia o QR code ou abra:\n"
+        onde = "com internet" if getattr(args, "tunel", False) else "na mesma rede do notebook"
+        print(f"\nNo celular ({onde}), leia o QR code ou abra:\n"
               f"    {servidor.url}\n"
               "Se o Windows perguntar, permita o Python na rede. O rotulo some quando o\n"
               "celular abrir a pagina. Tecla t troca as telas, ESPACO mostra o QR de novo.")
@@ -185,7 +188,8 @@ def cmd_mostrar(args, servidor=None):
                 img = _rotulo(imgs[i], papel, mons[i].dispositivo)
             else:
                 img = _rotulo_celular(imgs[i], papel, mons[i].dispositivo, servidor.url,
-                                      qr if i == i_nb else None)
+                                      qr if i == i_nb else None,
+                                      getattr(args, "tunel", False))
             cv2.imshow(nomes[i], img)
         k = cv2.waitKey(50) & 0xFF
         if k in (ord("q"), 27):
@@ -227,15 +231,29 @@ def cmd_celular(args):
                         pasta_debug=PASTA_DEBUG, verbose=False)
 
     try:
-        servidor = celular.Servidor(PASTA_CELULAR, calcular_sessao, args.porta)
+        servidor = celular.Servidor(PASTA_CELULAR, calcular_sessao, args.porta,
+                                    host="127.0.0.1" if args.tunel else "0.0.0.0")
     except OSError as e:
         print(f"nao consegui abrir a porta {args.porta}: {e}. Tente --porta 8766")
         return 1
+    tunel = None
+    if args.tunel:
+        print("abrindo o tunel pela internet...")
+        try:
+            tunel, publico, servico = celular.abrir_tunel(servidor.porta, args.tunel_servico)
+            print(f"tunel aberto por {servico}")
+        except RuntimeError as e:
+            print(f"{e}")
+            servidor.http.server_close()
+            return 1
+        servidor.url = f"{publico}/{servidor.token}/"
     try:
         cod = cmd_mostrar(args, servidor)
     finally:
         if servidor.thread.is_alive():
             servidor.parar()
+        if tunel is not None:
+            tunel.terminate()
     if cod == 0 and servidor.terminou:
         r = servidor.resultado
         g, q = r["resumo"], r["qualidade"]
@@ -650,6 +668,11 @@ def main(argv=None):
     e.add_argument("-o", "--saida", default=None, help="padroes.json (padrao: config)")
     e.add_argument("--telas", default=None, help="telas.json (padrao: config)")
     e.add_argument("--porta", type=int, default=8765)
+    e.add_argument("--tunel", action="store_true",
+                   help="o celular acessa pela internet (tunel ssh), sem precisar estar "
+                        "na mesma rede; as fotos passam pelo servico de tunel")
+    e.add_argument("--tunel-servico", choices=["serveo", "localhost.run"], default=None,
+                   help="servico do tunel (padrao: tenta serveo, depois localhost.run)")
     e.set_defaults(func=cmd_celular)
 
     c = sub.add_parser("calcular", help="calcula o telas.json a partir das fotos")

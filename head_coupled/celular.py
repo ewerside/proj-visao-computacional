@@ -17,15 +17,29 @@ Seguranca: o servidor so existe enquanto o comando roda, so aceita pedidos com
 o codigo aleatorio que vai no QR code, so grava JPEG/PNG com nome gerado por
 ele, dentro da pasta da sessao, e limita o tamanho de cada envio.
 
-O celular e o notebook precisam estar na MESMA rede. Se o Wi-Fi isolar os
-aparelhos (comum em rede de faculdade), ligue o roteador do celular e conecte o
-notebook nele. Na primeira vez o Windows pergunta se o Python pode receber
-conexoes: permita.
+O celular e o notebook precisam estar na MESMA rede, e a rede tem de deixar um
+aparelho falar com o outro. Na primeira vez o Windows pergunta se o Python pode
+receber conexoes: permita.
+
+SEM A MESMA REDE (--tunel): rede de faculdade que isola os aparelhos, ou o
+roteador do proprio celular, que em alguns aparelhos nao entrega conexoes dele
+mesmo para o notebook. Com --tunel o notebook abre uma conexao de SAIDA por ssh
+ate um servico de tunel (serveo.net; reserva: localhost.run) e ganha um endereco
+publico https; o QR aponta para ele e o celular acessa pela internet (4G/5G ou
+qualquer Wi-Fi). O servidor local passa a escutar so em 127.0.0.1. As fotos
+passam pelo servico de terceiros, e o endereco fica publico enquanto o comando
+roda, protegido pelo codigo do QR.
+Medido em 13/11/2026: serveo.net levou 6.5 s para 5 MB; o plano gratuito do
+localhost.run limita a ~16 kB/s (5 minutos por foto), por isso e so reserva.
 """
 
+import hashlib
 import json
 import os
+import re
 import secrets
+import shutil
+import subprocess
 import socket
 import threading
 import time
@@ -69,6 +83,60 @@ def ip_local():
         return "127.0.0.1"
     finally:
         s.close()
+
+
+# Servicos de tunel por ssh, na ordem de tentativa: destino e formato do endereco.
+TUNEIS = {
+    "serveo": ("serveo.net", r"https://[a-z0-9-]+\.serveo(?:usercontent)?\.(?:com|net)"),
+    "localhost.run": ("nokey@localhost.run", r"https://[a-z0-9-]+\.lhr\.life"),
+}
+
+
+def _tunel_ssh(ssh, porta, destino, padrao, espera_s):
+    proc = subprocess.Popen(
+        [ssh, "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=30",
+         "-o", "ExitOnForwardFailure=yes", "-R", f"80:127.0.0.1:{porta}", destino],
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    achado, linhas = [], []
+
+    def ler():
+        for bruto in proc.stdout:
+            linha = bruto.decode("utf-8", "replace")
+            linhas.append(linha.strip())
+            m = re.search(padrao, linha)
+            if m and not achado:
+                achado.append(m.group(0))
+
+    threading.Thread(target=ler, daemon=True).start()
+    fim = time.time() + espera_s
+    while time.time() < fim and not achado and proc.poll() is None:
+        time.sleep(0.2)
+    if not achado:
+        proc.terminate()
+        return None, " | ".join(l_ for l_ in linhas[-3:] if l_)
+    return proc, achado[0]
+
+
+def abrir_tunel(porta, servico=None, espera_s=20.0):
+    """Tunel reverso por ssh. Devolve (processo, url https, nome do servico).
+
+    So conexao de saida; nada e instalado. servico: nome em TUNEIS, ou None para
+    tentar todos na ordem. Levanta RuntimeError com mensagem legivel se o ssh
+    nao existir ou nenhum servico responder.
+    """
+    ssh = shutil.which("ssh")
+    if ssh is None:
+        raise RuntimeError("nao achei o programa ssh (no Windows: Configuracoes > "
+                           "Recursos opcionais > Cliente OpenSSH)")
+    erros = []
+    for nome in ([servico] if servico else list(TUNEIS)):
+        destino, padrao = TUNEIS[nome]
+        proc, r = _tunel_ssh(ssh, porta, destino, padrao, espera_s)
+        if proc is not None:
+            return proc, r, nome
+        erros.append(f"{nome}: {r or 'sem resposta'}")
+    raise RuntimeError("o tunel nao abriu (sem internet, ou o servico esta fora do ar). "
+                       + "; ".join(erros))
 
 
 def imagem_qr(texto, lado_px=420):
@@ -165,6 +233,7 @@ class Servidor:
         with self.trava:
             self.pasta = os.path.join(self.pasta_base, time.strftime("%Y%m%d_%H%M%S"))
             self.fotos = []             # {"nome", "notebook", "monitor", "boa"}
+            self.recebidas = {}         # sha1 dos bytes -> entrada de self.fotos
             self.resultado = None
 
     def definir_padroes(self, pads):
@@ -196,9 +265,12 @@ class Servidor:
                            cv2.IMREAD_GRAYSCALE | cv2.IMREAD_IGNORE_ORIENTATION)
         if img is None:
             return {"erro": "nao consegui ler a foto"}
+        marca = hashlib.sha1(dados).hexdigest()
         with self.trava:
             if self.det is None:
                 return {"erro": "os padroes ainda nao estao na tela"}
+            if marca in self.recebidas:      # reenvio da mesma foto (rede instavel)
+                return {**self.estado(), "aviso": "", "ultima": self.recebidas[marca]}
             r = self.det.detectar(img)
             na = 0 if r[0] is None else r[0].n
             nb = 0 if r[1] is None else r[1].n
@@ -223,6 +295,7 @@ class Servidor:
                 nome = "(descartada)"
             self.fotos.append({"nome": nome, "notebook": na, "monitor": nb, "boa": boa,
                                "tam": [int(img.shape[1]), int(img.shape[0])]})
+            self.recebidas[marca] = self.fotos[-1]
         return {**self.estado(), "aviso": aviso, "ultima": self.fotos[-1]}
 
     def calcular(self):
@@ -333,10 +406,20 @@ function mostrar(e){
 }
 async function pedir(rota, corpo){
   ocupado = true; $('calc').disabled = true;
-  try{
-    const r = await fetch(rota, {method: corpo === undefined ? 'GET' : 'POST', body: corpo});
-    ocupado = false; mostrar(await r.json());
-  }catch(err){ ocupado = false; $('aviso').textContent = 'Sem conexão com o notebook. Ele e o celular estão na mesma rede?'; }
+  for(let tentativa = 1; tentativa <= 3; tentativa++){
+    try{
+      const r = await fetch(rota, {method: corpo === undefined ? 'GET' : 'POST', body: corpo});
+      const e = await r.json();
+      ocupado = false; mostrar(e); return;
+    }catch(err){
+      if(tentativa < 3){
+        $('aviso').textContent = 'Falhou, tentando de novo (' + tentativa + '/3)…';
+        await new Promise(ok => setTimeout(ok, 1500));
+      }
+    }
+  }
+  ocupado = false;
+  $('aviso').textContent = 'Sem conexão com o notebook. Confira a rede do celular e tente de novo.';
 }
 $('arq').addEventListener('change', async ev => {
   const f = ev.target.files[0]; if(!f) return;

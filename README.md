@@ -131,7 +131,8 @@ python calibrar_telas.py celular
 
 As telas mostram os padrões e, no notebook, um **QR code**. O celular lê o QR e abre uma página servida pelo próprio notebook. Cada toque em "Tirar foto" abre a câmera do celular; a foto sobe em resolução total e a página responde na hora quantos cantos foram achados em cada tela e de onde tirar a próxima. O botão "Calcular" grava o `telas.json`. Não instala nada no celular.
 
-- Celular e notebook precisam estar na **mesma rede**. Se o Wi‑Fi isolar os aparelhos, ligue o roteador do celular e conecte o notebook nele.
+- Celular e notebook precisam estar na **mesma rede**, e a rede precisa deixar um aparelho falar com o outro.
+- **Sem a mesma rede:** `python calibrar_telas.py celular --tunel`. O notebook abre um túnel de saída por `ssh` até um serviço público (serveo.net) e o QR passa a apontar para um endereço `https` que o celular acessa pela internet (4G/5G). Serve para Wi‑Fi que isola os aparelhos e para o roteador do próprio celular. As fotos passam por esse serviço, e o endereço fica público enquanto o comando roda, protegido pelo código do QR.
 - Na primeira vez o Windows pergunta se o Python pode receber conexões: permita.
 - O servidor só existe enquanto o comando roda e só aceita pedidos com o código aleatório do QR. As fotos ficam em `head_coupled/fotos_celular/`.
 
