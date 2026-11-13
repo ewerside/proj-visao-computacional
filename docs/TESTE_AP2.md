@@ -109,7 +109,7 @@ Esta medida é a régua de todo o sistema. Cada 1 mm de erro aqui vira 1 a 3 mm 
 2. Meça com régua a **largura** e a **altura** dessa área acesa, sem a moldura preta de plástico, em milímetros.
 3. Em `config.py`, troque `SCREEN_W` e `SCREEN_H` pelos valores medidos, em **metros**. Exemplo: 344,5 mm vira `0.3445`.
 
-Hoje o `config.py` tem 0,345 × 0,194 m, que veio do EDID do painel com incerteza de ~1 mm.
+O padrão do `config.py` é uma tela de 15,6 pol 16:9: 0,3454 × 0,1943 m, com incerteza de ~1 mm. Se a sua tela for outra, troque.
 
 ## 4. VOCÊ: teste dos monitores (5 min)
 

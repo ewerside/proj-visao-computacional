@@ -37,8 +37,11 @@ IPD_REAL = 0.064
 # em relacao a este: 1 mm de erro aqui vira 1-3 mm na posicao do monitor. Meca
 # a area ACESA (sem a moldura preta) com regua, de preferencia com o
 # testar_monitores.py aberto, que desenha uma moldura de 1 px na borda dela.
-SCREEN_W = 0.345
-SCREEN_H = 0.194
+#
+# PADRAO DO PROJETO: tela de 15.6 pol, 16:9 (34.54 x 19.43 cm). Se a tela com a
+# webcam for outra, troque estas duas medidas pelas da sua (em metros).
+SCREEN_W = 0.3454
+SCREEN_H = 0.1943
 
 # Deslocamento da lente da webcam em relacao ao CENTRO da tela, Y positivo para
 # cima. Este e o unico numero ainda estimado: 10 mm da borda superior da area
