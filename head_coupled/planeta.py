@@ -23,8 +23,8 @@ import numpy as np
 import janelas
 import scene as scn
 
-RAIO = 0.150
-ATRAS = 0.52              # centro do planeta atras da juncao, em metros
+RAIO = 0.120
+ATRAS = 0.60              # centro do planeta atras da juncao, em metros
 FAIXAS = [(150, 185, 228), (112, 150, 212), (168, 204, 238), (96, 128, 196),
           (140, 176, 224), (118, 152, 208), (160, 196, 232), (104, 136, 200)]
 MANCHA = (70, 90, 200)
