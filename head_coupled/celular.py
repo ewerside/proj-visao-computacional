@@ -332,6 +332,10 @@ p{margin:8px 0}
 .cartao{background:var(--cartao);border:1px solid var(--borda);border-radius:14px;padding:14px;margin:12px 0}
 .num{font-size:40px;font-weight:700;line-height:1}
 .sug{font-size:19px;font-weight:600}
+.barra{position:relative;height:18px;border-radius:9px;background:var(--borda);margin:14px 0 6px;overflow:hidden}
+.cheio{height:100%;width:0;border-radius:9px;background:var(--acao);transition:width .4s ease,background .4s}
+.cheio.pronto{background:var(--ok)}
+.marca{position:absolute;top:0;bottom:0;width:2px;background:var(--texto);opacity:.55}
 button,label.botao{display:block;width:100%;padding:16px;border-radius:12px;border:0;font:inherit;
 font-weight:700;font-size:19px;text-align:center;background:var(--acao);color:#fff;margin:10px 0}
 button.sec,label.sec2{background:transparent;color:var(--acao);border:2px solid var(--acao)}
@@ -350,6 +354,9 @@ td{padding:4px 0;border-top:1px solid var(--borda)} td:last-child{text-align:rig
 
 <div class="cartao">
   <div class="num"><span id="boas">0</span><span class="fraco" style="font-size:19px"> de <span id="ideal">12</span> fotos boas</span></div>
+  <div class="barra" role="progressbar" aria-valuemin="0" id="barra">
+    <div class="cheio" id="cheio"></div><div class="marca" id="marca"></div></div>
+  <p id="falta" class="fraco">Tire a primeira foto.</p>
   <p class="fraco">Pr&oacute;xima foto:</p>
   <p class="sug" id="sug">de frente, no meio das duas telas</p>
   <label class="botao" id="rotulo">Tirar foto
@@ -377,6 +384,18 @@ function mostrar(e){
   if(e.erro){ $('aviso').textContent = e.erro; return; }
   $('boas').textContent = e.boas; $('ideal').textContent = e.ideal;
   $('sug').textContent = e.sugestao;
+  const pct = Math.min(100, 100 * e.boas / e.ideal);
+  $('cheio').style.width = pct + '%';
+  $('cheio').className = 'cheio' + (e.boas >= e.ideal ? ' pronto' : '');
+  $('marca').style.left = (100 * e.minimo / e.ideal) + '%';
+  $('barra').setAttribute('aria-valuemax', e.ideal);
+  $('barra').setAttribute('aria-valuenow', e.boas);
+  const plural = n => n + (n === 1 ? ' foto' : ' fotos');
+  $('falta').textContent =
+    e.boas === 0 ? 'Tire a primeira foto.' :
+    e.boas < e.minimo ? 'Faltam ' + plural(e.minimo - e.boas) + ' para poder calcular.' :
+    e.boas < e.ideal ? 'Já dá para calcular. Mais ' + plural(e.ideal - e.boas) + ' deixam o resultado melhor.' :
+    'Pronto: toque em Calcular.';
   $('aviso').textContent = e.aviso || '';
   $('calc').disabled = ocupado || e.boas < e.minimo;
   const l = $('lista'); l.innerHTML = '';
