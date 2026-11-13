@@ -334,7 +334,7 @@ p{margin:8px 0}
 .sug{font-size:19px;font-weight:600}
 button,label.botao{display:block;width:100%;padding:16px;border-radius:12px;border:0;font:inherit;
 font-weight:700;font-size:19px;text-align:center;background:var(--acao);color:#fff;margin:10px 0}
-button.sec{background:transparent;color:var(--acao);border:2px solid var(--acao)}
+button.sec,label.sec2{background:transparent;color:var(--acao);border:2px solid var(--acao)}
 button.leve{background:transparent;color:var(--fraco);font-weight:400;font-size:15px;padding:8px}
 button:disabled{opacity:.4}
 input[type=file]{display:none}
@@ -354,6 +354,8 @@ td{padding:4px 0;border-top:1px solid var(--borda)} td:last-child{text-align:rig
   <p class="sug" id="sug">de frente, no meio das duas telas</p>
   <label class="botao" id="rotulo">Tirar foto
     <input type="file" id="arq" accept="image/*" capture="environment"></label>
+  <label class="botao sec2" id="rotulo2">Enviar várias da galeria
+    <input type="file" id="varias" accept="image/*" multiple></label>
   <p id="aviso" class="ruim"></p>
   <button id="calc" class="sec" disabled>Calcular</button>
 </div>
@@ -427,6 +429,15 @@ $('arq').addEventListener('change', async ev => {
   $('rotulo').firstChild.textContent = 'Enviando… ';
   await pedir('foto', f);
   $('rotulo').firstChild.textContent = 'Tirar foto ';
+  ev.target.value = '';
+});
+$('varias').addEventListener('change', async ev => {
+  const lista = Array.from(ev.target.files);
+  for(let i = 0; i < lista.length; i++){
+    $('rotulo2').firstChild.textContent = 'Enviando ' + (i + 1) + ' de ' + lista.length + '… ';
+    await pedir('foto', lista[i]);
+  }
+  $('rotulo2').firstChild.textContent = 'Enviar várias da galeria ';
   ev.target.value = '';
 });
 $('calc').addEventListener('click', async () => {
