@@ -193,7 +193,7 @@ Isto ainda não usa o celular. Serve para ver as duas telas funcionando e é o p
 4. Rode:
 
    ```bash
-   python main.py
+   python main.py --direto
    ```
 
    As duas telas devem reagir ao movimento da cabeça. A tecla `n` troca de cena: primeiro as da AP1, com uma caixa em cada tela; depois `janelas`, `sala` e `alinhamento`, um mundo só visto pelas duas telas. Como a trena é imprecisa, é normal haver um pequeno degrau nas retas que cruzam a junção.
@@ -257,7 +257,7 @@ python calibrar_telas.py calcular
 ## 9. VOCÊ: as duas telas com a calibração (10 min)
 
 ```bash
-python main.py
+python main.py --direto
 ```
 
 | Tecla | O que faz |

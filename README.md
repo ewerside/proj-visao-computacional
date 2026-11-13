@@ -144,7 +144,7 @@ python main.py --uma-tela
 python testar_monitores.py          # confere os dois monitores (Win+P > Estender)
 python calibrar_telas.py mostrar    # padroes nas telas; tire as fotos com o celular
 python calibrar_telas.py calcular   # fotos em head_coupled/fotos/ -> telas.json
-python main.py                      # duas telas
+python main.py --direto                      # duas telas
 ```
 
 ### Fotos direto do celular (sem copiar arquivos)

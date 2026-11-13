@@ -28,7 +28,8 @@ tambem pelos cenarios do mundo compartilhado (trem, planeta, sala, alinhamento).
 Sem telas.json, ou com --uma-tela, e o AP1 de sempre, uma tela so. O anaglifo so
 existe com uma tela.
 
-    python main.py                  usa o telas.json, se existir
+    python main.py                  abre o menu do Parallax (o mesmo que parallax.py)
+    python main.py --direto         laco das cenas; usa o telas.json, se existir
     python main.py --uma-tela       ignora o telas.json (modo AP1)
     python main.py --telas outro.json
 
@@ -224,6 +225,8 @@ def argumentos(argv=None):
                     help="comeca com o anaglifo ligado (so com uma tela)")
     ap.add_argument("--app", action="store_true",
                     help="chamado pelo menu: sem legendas de teclas")
+    ap.add_argument("--direto", action="store_true",
+                    help="abre direto o laco das cenas, sem passar pelo menu")
     return ap.parse_args(argv)
 
 
@@ -588,4 +591,11 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    import sys
+    if len(sys.argv) == 1:
+        # Sem argumentos (por exemplo, o botao de executar do editor): abre o
+        # menu do Parallax, que e a porta de entrada do programa. Para cair
+        # direto no laco das cenas, com as legendas de teclas: --direto.
+        import parallax
+        sys.exit(parallax.main())
     main()
