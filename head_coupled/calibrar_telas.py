@@ -38,6 +38,7 @@ import json
 import math
 import os
 import sys
+import time
 
 import cv2
 import numpy as np
@@ -178,7 +179,9 @@ def cmd_mostrar(args, servidor=None):
             if servidor.conectado and not ja_conectou:
                 ja_conectou, mostrar_rotulo = True, False
                 print("celular conectado: tire as fotos pela pagina")
-            if servidor.terminou:
+            # Terminou: espera o celular buscar o resultado (ou 20 s) antes de sair.
+            if servidor.terminou and (servidor.resultado_entregue
+                                      or time.time() - servidor.t_terminou > 20):
                 break
         for i in (i_nb, i_mon):
             papel = "NOTEBOOK" if i == i_nb else "MONITOR"

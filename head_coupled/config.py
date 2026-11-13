@@ -73,7 +73,7 @@ MONITOR_SEMPRE_NO_TOPO = True
 # Diagonal NOMINAL do monitor externo, em polegadas (a da etiqueta ou da
 # caixa). E so o chute inicial: a calibracao pelas fotos estima o tamanho real.
 # Errar 5-10% aqui nao muda nada; errar o modelo (32 no lugar de 24) atrapalha.
-MONITOR_DIAGONAL_POL = 24.0
+MONITOR_DIAGONAL_POL = 23.0
 
 # Arquivos da calibracao das telas (ver calibrar_telas.py). Sem telas.json o
 # main.py roda no modo de uma tela so, exatamente como na AP1.

@@ -158,6 +158,10 @@ class Servidor:
         self.pasta_base = pasta_base
         self.conectado = False          # o celular ja abriu a pagina
         self.terminou = False           # calculou com sucesso
+        self.t_terminou = None          # quando terminou (time.time())
+        self.resultado_entregue = False  # o celular ja recebeu o resultado
+        self.calculando = False
+        self.erro_calculo = None
         self.resultado = None
         self._nova_sessao()
         servidor = self
@@ -172,8 +176,11 @@ class Servidor:
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(corpo)))
                 self.send_header("Cache-Control", "no-store")
-                self.end_headers()
-                self.wfile.write(corpo)
+                try:
+                    self.end_headers()
+                    self.wfile.write(corpo)
+                except OSError:                  # o celular desistiu de esperar
+                    pass
 
             def _rota(self):
                 partes = self.path.split("?")[0].strip("/").split("/")
@@ -196,7 +203,10 @@ class Servidor:
                     self.end_headers()
                     self.wfile.write(corpo)
                 elif rota == "estado":
-                    self._json(servidor.estado())
+                    e = servidor.estado()
+                    self._json(e)
+                    if e["resultado"] is not None:
+                        servidor.resultado_entregue = True
                 else:
                     self.send_error(404)
 
@@ -252,7 +262,8 @@ class Servidor:
     def estado(self):
         boas = sum(f["boa"] for f in self.fotos)
         return {"fotos": self.fotos, "boas": boas, "minimo": MIN_CALCULAR, "ideal": IDEAL,
-                "sugestao": SUGESTOES[boas % len(SUGESTOES)], "resultado": self.resultado}
+                "sugestao": SUGESTOES[boas % len(SUGESTOES)], "resultado": self.resultado,
+                "calculando": self.calculando, "erro_calculo": self.erro_calculo}
 
     # -------------------------------------------------------------- acoes
 
@@ -300,19 +311,35 @@ class Servidor:
         return {**self.estado(), "aviso": aviso, "ultima": self.fotos[-1]}
 
     def calcular(self):
-        with self.trava:
-            boas = sum(f["boa"] for f in self.fotos)
-            if boas < MIN_CALCULAR:
-                return {"erro": f"so {boas} fotos boas; tire pelo menos {MIN_CALCULAR}"}
-            try:
+        """Dispara o calculo em segundo plano e responde na hora.
+
+        O calculo leva de 10 a 60 s; segurar o pedido aberto esse tempo todo faz
+        o tunel ou o navegador desistir, e o resultado nao chega ao celular. A
+        pagina consulta /estado ate "calculando" virar falso.
+        """
+        boas = sum(f["boa"] for f in self.fotos)
+        if boas < MIN_CALCULAR:
+            return {"erro": f"so {boas} fotos boas; tire pelo menos {MIN_CALCULAR}"}
+        if not self.calculando:
+            self.calculando, self.erro_calculo = True, None
+            threading.Thread(target=self._calcular, daemon=True).start()
+        return self.estado()
+
+    def _calcular(self):
+        try:
+            with self.trava:
                 res = self.calcular_fn(self.pasta)
-            except SystemExit as e:              # erro legivel do calcular
-                return {"erro": str(e)}
             d = res["telas_json"]
             self.resultado = {"resumo": d["resumo"], "qualidade": d["qualidade"],
                               "avisos": res["avisos"], "n_fotos": res["n_duas_telas"]}
+            self.t_terminou = time.time()
             self.terminou = True
-        return self.estado()
+        except SystemExit as e:                  # erro legivel do calcular
+            self.erro_calculo = str(e)
+        except Exception as e:
+            self.erro_calculo = f"erro no notebook: {e}"
+        finally:
+            self.calculando = False
 
 
 PAGINA = r"""<!doctype html>
@@ -397,7 +424,10 @@ function mostrar(e){
     e.boas < e.ideal ? 'Já dá para calcular. Mais ' + plural(e.ideal - e.boas) + ' deixam o resultado melhor.' :
     'Pronto: toque em Calcular.';
   $('aviso').textContent = e.aviso || '';
-  $('calc').disabled = ocupado || e.boas < e.minimo;
+  $('calc').disabled = ocupado || e.calculando || e.boas < e.minimo;
+  $('calc').textContent = e.calculando ? 'Calculando… (até 1 minuto)' : 'Calcular';
+  if(e.erro_calculo) $('aviso').textContent = e.erro_calculo;
+  if(e.calculando) setTimeout(() => pedir('estado'), 2000);
   const l = $('lista'); l.innerHTML = '';
   if(!e.fotos.length) l.innerHTML = '<li class="fraco">Nenhuma foto ainda.</li>';
   e.fotos.slice().reverse().forEach((f,i) => {
@@ -459,9 +489,7 @@ $('varias').addEventListener('change', async ev => {
   $('rotulo2').firstChild.textContent = 'Enviar várias da galeria ';
   ev.target.value = '';
 });
-$('calc').addEventListener('click', async () => {
-  $('calc').textContent = 'Calculando…'; await pedir('calcular', ''); $('calc').textContent = 'Calcular';
-});
+$('calc').addEventListener('click', () => pedir('calcular', ''));
 $('rec').addEventListener('click', () => { if(confirm('Apagar a contagem e recomeçar?')) pedir('recomecar', ''); });
 pedir('estado');
 </script></body></html>

@@ -14,6 +14,7 @@ import json
 import os
 import shutil
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -94,7 +95,16 @@ def teste_servidor(falhas):
             falhas.append(f"so {boas} fotos boas de {N_FOTOS}; {len(gravadas)} gravadas")
 
         r = pedir(raiz + "calcular", b"")
-        if "erro" in r or not r.get("resultado") or not srv.terminou:
+        if not r.get("calculando"):
+            falhas.append("calcular deveria responder na hora, com calculando = true")
+        for _ in range(120):                     # a pagina consulta o estado
+            if not r.get("calculando"):
+                break
+            time.sleep(0.5)
+            r = pedir(raiz + "estado")
+        if r.get("erro_calculo") or not r.get("resultado") or not srv.terminou \
+                or not srv.resultado_entregue:
+            r["erro"] = r.get("erro_calculo")
             falhas.append(f"calcular falhou: {r.get('erro')}")
             return
         with open(saida, encoding="utf-8") as fh:

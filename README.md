@@ -92,15 +92,15 @@ python avaliar.py real          # repetibilidade nas fotos reais em head_coupled
 | Típicas | 0,21 (0,53) mm | 0,11 (0,16) mm | 0,23 (0,32) mm |
 | Ruins | 0,47 (1,01) mm | 0,16 (0,21) mm | 0,22 (0,26) mm |
 
-**Fotos reais (14 fotos de um Pixel 7 Pro, 30 subconjuntos de 10 fotos):** quanto as quinas do monitor mudam de um subconjunto para outro.
+**Fotos reais (12 fotos de um Pixel 7 Pro enviadas pela página do celular, 30 subconjuntos de 10 fotos):** quanto as quinas do monitor mudam de um subconjunto para outro.
 
 | Estimador | Desvio padrão | Máximo |
 |---|---|---|
-| PnP+média | 12,6 mm | 29,0 mm |
-| BA | 4,3 mm | 11,9 mm |
-| BA+tam | 1,2 mm | 2,9 mm |
+| PnP+média | 2,5 mm | 5,5 mm |
+| BA | 0,7 mm | 2,4 mm |
+| BA+tam | 0,4 mm | 1,2 mm |
 
-Nas fotos reais a diagonal informada do monitor (24 pol) estava errada; o ajuste que estima o tamanho chegou a 21,0 pol e ficou dez vezes mais estável que a média por foto.
+O ajuste de feixes é seis vezes mais estável que a média por foto. O tamanho estimado do monitor (51,0 × 28,7 cm, 23,0 pol) coincide com o que o próprio monitor informa ao Windows (509 × 286 mm). Erro de reprojeção: 1,13 px.
 
 ## Como rodar
 
