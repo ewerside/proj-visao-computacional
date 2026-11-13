@@ -1,0 +1,372 @@
+%% ------------- English version ---------------
+\documentclass[english,hidelinks]{sbrt}
+\usepackage{newtxtext}
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
+\newtheorem{theorem}{Theorem}
+%% ---------------------------------------------
+\setlength{\marginparwidth}{2cm}
+\usepackage{todonotes}
+\newcommand\rigel[1]{\todo[color=green, inline]{\textbf{Rigel}: #1}}
+\usepackage{orcidlink}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\graphicspath{{figs/}{./}}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[
+  compatibility=false,
+  font=footnotesize,
+  labelsep=period,
+  format=plain,
+  justification=raggedright,
+  singlelinecheck=false
+]{caption}
+
+\begin{document}
+
+\title{Smartphone-Assisted Calibration of Multi-Screen Display Geometry for Head-Coupled Perspective Rendering}
+
+\author{Ewerton Arrais, Miguel Veiga, Emilly Fernandes and Rigel Fernandes}
+
+\maketitle
+
+\markboth{XLIV BRAZILIAN SYMPOSIUM ON TELECOMMUNICATIONS AND SIGNAL PROCESSING - SBrT 2026, SEPTEMBER 29TH TO OCTOBER 2ND, 2026, SALVADOR, BA}{}
+
+\begin{abstract}
+Head-coupled perspective rendering on multiple screens requires the pose of every display in a common frame with millimeter accuracy, which usually demands specialized equipment or manual measurement. This paper proposes a largely automatic calibration procedure that needs only an ordinary smartphone. ChArUco markers shown on each screen, scaled from the panel's pixel density, give the pose of each display; a planar mirror recovers screens outside the camera's direct view; and a perceptual alignment step based on collinearity across screen seams refines the result. The calibration has not yet been evaluated on real photographs; the rendering stage that consumes its output already drives two screens, with a webcam-limited tracking loop of about 20 fps and a head-distance noise of about 0.7 mm.
+% >>> NOVO (abstract): ultima linha com resultado
+In simulated photographs, a bundle-adjustment refinement of the ChArUco poses places the second screen with a worst-corner error of at most 0.21~mm with ten views, against 1.01~mm for per-photograph averaging.
+\end{abstract}
+\begin{keywords}
+Multi-screen calibration, fish tank VR, ChArUco markers, head-coupled perspective, smartphone.
+\end{keywords}
+
+\section{Introduction}
+
+\rigel{AC Semana 4: Elaborar dois parágrafos que contextualizam seu trabalho, conforme instruções da AC Semana 4. Cada parágrafo deverá ter duas referências cada}
+Conventional computer displays are flat surfaces, and conveying the three-dimensional structure of a scene on them remains a longstanding problem in computer graphics and human-computer interaction. Head-mounted displays address this by presenting a separate image to each eye and updating both as the user moves. However, they require dedicated hardware, isolate the wearer from the physical environment, and cannot be shared with an observer standing alongside. An alternative, known as head-coupled perspective or fish tank virtual reality (VR), recovers much of the same depth impression on an ordinary monitor. A camera tracks the viewer's head, and the scene is continuously re-rendered from that viewpoint, so that the screen behaves like a window onto a virtual space rather than a picture of it. Ware et al. \cite{ware1993fish} showed that this motion-parallax cue alone is a powerful depth signal. The rendering it requires uses an off-axis, asymmetric viewing frustum, whose parameters depend jointly on the physical position of the screen and on the position of the observer's eye, as formalized by Kooima \cite{kooima2009generalized}. Because the effect relies on hardware that most users already own, it is an attractive route to accessible three-dimensional visualization.
+
+Extending head-coupled perspective from a single monitor to several screens arranged side by side substantially enlarges the virtual space that can be presented. However, it introduces a requirement that single-screen systems avoid entirely: the pose of every display, and of the tracking camera, must be known in a common coordinate frame with millimeter accuracy. Because the off-axis frustum of each screen is computed from its physical corners, an error of a few millimeters in a screen's estimated position produces a visible discontinuity at the seam between screens and destroys the illusion. Fafard et al. \cite{fafard2017calibration} identify this calibration step as the practical obstacle to effective multi-screen fish tank VR, contrasting flat-panel and projected configurations with and without bezels. Zhou et al. \cite{zhou2017automatic} demonstrate that such geometry can indeed be recovered automatically with sub-millimeter surface accuracy, but only for a spherical projected display observed by a pre-calibrated external camera. Both approaches assume equipment or measurements that a typical user does not have, and both must be repeated from scratch whenever a display is physically moved. This work addresses that gap using computer vision techniques that require no specialized hardware. It recovers the relative pose of each screen from images captured with an ordinary smartphone, whose intrinsic parameters need not be known in advance. The screens themselves display fiducial markers of the ArUco family \cite{garrido2014automatic}, whose physical dimensions can be derived from the pixel density of each panel, turning every display into its own calibration target.
+
+\rigel{AC Semana 4: se for necessário, revise os parágrafos da revisão de literatura... (por exemplo, em caso de mudança de título do projeto)}
+
+\rigel{AC Semana 2: O parágrafo abaixo inicia uma revisão da literatura, ou seja, apresentar os trabalhos relacionados ao que está sendo proposto nesse manuscrito. Caso necessário, adapte o título provisório}
+Three recent contributions delimit the state of the art most relevant to the proposed system. Pham et al. \cite{pham2025realtime} present a real-time, CPU-only monocular pipeline for head-tracked rendering on a single conventional display, combining a webcam-based face-mesh tracker with a viewpoint-dependent rendering stage. Their system confirms that a low-cost monocular pipeline of the kind adopted in this work is already practical. However, it assumes one display whose geometry relative to the tracking camera is fixed and known beforehand, leaving open the problem of extending the same rendering model to several independently positioned screens. Because the calibration procedure proposed here displays fiducial patterns on the screens themselves rather than on printed targets, marker detection must remain reliable on an emissive surface subject to glare and strong local contrast variation. Berral-Soler et al. \cite{berralsoler2024deeparuco} address this failure mode with DeepArUco++, a convolutional pipeline for detecting and decoding square fiducial markers under challenging illumination, accompanied by a real-world evaluation dataset. Their results show that classical thresholding-based detectors degrade sharply under extreme intra-frame lighting variation, which is the regime a photographed screen falls into. Once a marker has been reliably detected, its pose must still be recovered accurately from a single, often oblique, smartphone viewpoint. Kim et al. \cite{kim2024enhancing} address this by combining several markers simultaneously, using spatial consistency verification to reject invalid detections within a marker array and temporal stability analysis to discard outlier measurements. They report improved accuracy and precision over single-marker estimation, particularly at large viewing angles, which supports the use of redundant on-screen patterns rather than a single marker per display when recovering screen pose.
+
+\rigel{AC Semana 3: O parágrafo abaixo continua a revisão da literatura, ou seja, apresentar mais trabalhos relacionados ao que está sendo proposto nesse manuscrito. Caso necessário, adapte o título provisório
+
+Verifiquem as referências dos alunos do Ibmec e cite-as caso seja oportuno}
+The broader motivation and the geometric foundation for this work come from an older but still central body of research. Ware et al. \cite{ware1993fish} coined the term fish tank virtual reality. In a controlled path-tracing task, they showed that head-coupled perspective alone reduced error rates from 22\% in a static pictorial display to 3.2\%, a far larger gain than stereopsis alone (14.7\%). This result justifies pursuing a monoscopic, head-coupled system rather than requiring stereo hardware. Realizing this effect on more than one screen, however, requires knowing the pose of each display and of the tracking camera, which in turn depends on classical camera calibration. Zhang \cite{zhang2000flexible} introduced the now-standard technique of recovering a camera's intrinsic and extrinsic parameters from images of a planar pattern observed in at least two orientations, followed by nonlinear refinement of the reprojection error. This is the mathematical basis of every pose estimate obtained from the on-screen fiducial patterns used in this work. Closest in spirit to the present proposal, Wagemakers et al. \cite{wagemakers2017interactive} developed an interactive, marker-free calibration procedure in which a user aligns visual patterns across the seams of a multi-screen fish tank VR display until they appear continuous, and showed that this visual calibration outperformed manual tuning. Critically, their method calibrates the head-tracker's registration to a known viewpoint rather than the physical geometry of the screens themselves, which is assumed to be already known. The present work addresses the complementary problem that their method leaves open: recovering that screen geometry with little user intervention, using only a smartphone.
+
+\rigel{AC Semana 5: Elaborar o penúltimo parágrafo que descreve a proposta do artigo e contribuições
+
+Verifiquem as referências dos alunos do Ibmec e cite-as caso seja oportuno}
+To fill this gap, we propose a largely automatic method for locating multiple planar screens in a common coordinate frame using only hardware that a typical user already owns. The procedure combines three complementary techniques. First, ChArUco markers are displayed directly on each screen, with their physical dimensions derived automatically from the panel's pixel density. Second, a mirror-based calibration step recovers the pose of screens that lie outside the tracking camera's direct field of view, extending coverage without requiring the camera to observe every screen head-on. Third, a perceptual alignment step exploits collinearity across screen seams to refine the relative pose obtained from the first two steps. Together, these techniques are designed to allow the screens of a multi-screen fish tank VR setup to be calibrated without external tracking equipment or manual measurement with a ruler. The intrinsic parameters of the smartphone are estimated from photographs of a planar pattern, as described in Section~\ref{sec:II}. Since only a few photographs are needed, the calibration can be repeated whenever a screen is moved. Apart from supplying the panel specifications, taking the photographs and transferring them, the only step that depends on the user is the final perceptual alignment, which is adjusted with the keyboard (Section~\ref{sec:III}).
+
+\rigel{AC Semana 5: Elaborar o  último parágrafo da introdução (que é a visita guiada), nesse parágrafo sintetize para o leitor o que cada seção tratará, como o exemplo abaixo:
+“The rest of this work is organized as follows. Section II examines the computer-vision-based liveness monitoring system, while Section III details the system’s implementation. We then analyze the system’s performance in liveness detection and discuss encountered issues in Section IV, and Section V concludes the work.”}
+The rest of this work is organized as follows. Section~\ref{sec:II} describes the system, covering the sensing hardware, the communication between the smartphone and the processing workstation, the planned experimental configuration, and the implementation of the rendering stage. Section~\ref{sec:III} details the proposed calibration method, including the ChArUco-based marker detection, the mirror-assisted calibration step, the perceptual alignment procedure, and the rendering prototype. Section~\ref{sec:IV} reports and discusses the partial results obtained so far with the prototype, and Section~\ref{sec:V} concludes the work. The source code of the prototype is available at \url{https://github.com/ewerside/proj-visao-computacional}.
+
+\rigel{AC Semana 5: Elaborar outline do artigo (criar apenas o esqueleto do artigo - nomes das seções), e.g., seção descrição do sistema, método proposto, resultados e conclusões. Para isso utilize como referência as 10 referências já visitadas sobre o problema que se está estudando (tome como base esse manuscrito que foi elaborado por outros estudantes do Ibmec e que foi submetido e aceito para publicação).}
+
+\rigel{AC Semana 6: Apresente os sensores e/ou microcontroladores e, possivelmente, os protocolos de comunicação utilizados. Inclua uma referência que apresente cada um desses componentes (pode ser referências já utilizadas previamente na seção de introdução) que deverão dar suporte a essa descrição.}
+\section{System Description}
+\label{sec:II}
+
+Unlike embedded sensing systems built around dedicated microcontrollers and external sensors, the proposed calibration procedure requires a single sensing device: an off-the-shelf smartphone. The screens being calibrated act only as passive visual targets, displaying markers rather than housing any sensor themselves.
+
+\subsection{Sensing Hardware}
+The only sensor used by the calibration procedure is the RGB camera embedded in the smartphone, used without any prior factory calibration. Because the camera's intrinsic parameters (focal length, principal point, and lens distortion coefficients) are unknown beforehand, they are recovered directly from images captured by this same camera. For this, we use Zhang's~\cite{zhang2000flexible} planar calibration technique, applied to a short sequence of photographs of a planar pattern taken in at least two orientations before the calibration session. Using a single consumer-grade camera as the only sensor of the calibration procedure is consistent with the low-cost approach of Pham et al.~\cite{pham2025realtime}, whose real-time, CPU-only head-coupled rendering pipeline relies on one off-the-shelf camera and no dedicated tracking hardware. The rendering prototype of Section~\ref{sec:impl} additionally uses the notebook's built-in webcam as its head-tracking sensor.
+
+\subsection{Communication}
+The system uses no microcontroller and no wireless or embedded communication protocol. The smartphone's only role is to transfer the captured images to the processing workstation, either via USB or local file transfer; all screen-pose estimation is performed offline afterward on a single machine. Because the entire pipeline is a computer-vision procedure rather than an embedded sensing network, none of the telemetry protocols typical of IoT sensing systems (e.g., MQTT, Bluetooth, Wi-Fi) are needed here.
+
+\subsection{Planned Experimental Configuration}
+% TODO: fill in with the real laboratory values before delivery (number of screens,
+% models/sizes, camera distance, lighting environment).
+% CHECK: with only two monitors side by side, both are visible to the camera, so the mirror step
+% has no out-of-view screen to recover. Either turn one monitor out of the camera's view, add a
+% third screen, or remove the mirror test from this section.
+For the first round of experiments, the system will be evaluated with two 16-inch flat-panel monitors arranged side by side on a single desk, photographed with a Google Pixel 7 Pro smartphone from a distance of approximately 1~m and at an angle of $45^\circ$ relative to the screens. The photographs will be taken first under controlled indoor lighting and later under normal ambient lighting, to stress-test marker detection. The mirror-assisted step will initially be evaluated with a single planar mirror, positioned to bring one screen that lies outside the camera's direct view into its field of view. Ground-truth screen positions for accuracy evaluation will be obtained by manual measurement with a tape measure.
+
+\subsection{Implementation of the Rendering Stage}
+\label{sec:impl}
+The rendering stage of the system, which consumes the geometry produced by the calibration, was implemented first as a single-screen prototype and then extended to two screens (Section~\ref{sec:two}). The description below refers to the single-screen prototype. Its source code is available at \url{https://github.com/ewerside/proj-visao-computacional}. The prototype is written in Python: OpenCV~\cite{bradski2000opencv} handles webcam capture and drawing, NumPy handles the geometry, and the viewer's head is tracked with the MediaPipe Face Landmarker. This tracker is based on the Attention Mesh face model~\cite{grishchenko2020attention} and returns 478 facial landmarks per frame, including the center of each iris. The distance between the two irises in the image, combined with a pinhole camera model and an assumed interpupillary distance of 64~mm, gives the position of the point midway between the viewer's eyes in metric units. The focal length of the webcam is estimated once, from the same interpupillary distance at a known distance from the camera (a webcam calibration, distinct from the screen calibration proposed in this paper). The position is smoothed with a One Euro filter~\cite{casiez2012oneeuro} and used to project the scene onto the plane of the screen, which is equivalent to the off-axis projection described by Kooima~\cite{kooima2009generalized}. The physical dimensions of the screen are currently entered by hand in a configuration file. The prototype runs on a Windows notebook with its built-in webcam, at about 20 frames per second (fps), a rate limited by the webcam capture.
+\rigel{
+AC Semana 7: Elaborar a seção III que deverá tratar sobre o método proposto:
+
+(1) Apresente, em detalhes, o funcionamento do sistema desenvolvido. Como nessa seção estão as contribuições do grupo, não é necessário inserir referências que dêem suporte;
+
+(2) Elabore um diagrama que facilite a compreensão do método (use o LucidChart por exemplo, exporte o diagrama como PDF para manter a boa resolução no artigo, cuidado com os espaços em branco que podem sobrar às margens do diagrama (no momento de exportar como PDF faça um recorte personalizado para tirar as margens em branco indesejáveis).
+
+De forma alternativa (ou adicionalmente), o grupo poderá gerar um pseudocódigo para mostrar como o sistema funciona (passos principais do método proposto);
+
+(3) Um parágrafo deverá ser escrito e deverá referenciar o diagrama criado na seção III Método. Explique o diagrama criado ao leitor.
+(4) Outro parágrafo deverá ser escrito e referenciar uma foto do protótipo. Explique o que está na foto ao leitor.
+}
+\section{Proposed Method}
+\label{sec:III}
+
+\subsection{Overview}
+For each screen, the method receives its pixel resolution and pixel density (in pixels per inch, PPI). It also receives the intrinsic parameters of the smartphone camera (matrix $K$ and distortion coefficients $D$, estimated as described in Section~\ref{sec:II}) and a set of photographs of the screens taken with the smartphone. It returns the pose of every screen in a common coordinate frame. From these poses, the four physical corners of each panel are obtained, which is the information needed to build the off-axis frustum of each screen. Fig.~\ref{fig:pipeline} summarizes the pipeline and Algorithm~\ref{alg:pipeline} lists its main steps.
+
+Fig.~\ref{fig:pipeline} reads from top to bottom. The first box lists the inputs, and the next two boxes prepare the calibration targets. A ChArUco board is generated for each screen, with a physical size computed from the panel's pixel density, and the screens are then photographed, each photograph also being flipped horizontally for use by the mirror-assisted step. Each photograph is processed to detect the markers and to estimate the pose of every visible board by solving the Perspective-n-Point (PnP) problem. The pipeline then splits into two branches. Screens that appear directly in the photographs are fused in a common frame through the relative poses between boards, while screens seen only through a planar mirror are recovered by the mirror-assisted step. Both branches produce poses expressed in the frame of a reference screen, which are finally refined by the perceptual alignment step. The output is the set of screen corners in the common frame.
+
+Throughout this section, $N$ is the number of screens, indexed by $i = 1,\dots,N$, and screen~1 is the reference, whose frame defines the common frame. We write $T_{a\leftarrow b}$ for the rigid transform that maps coordinates of frame $b$ into frame $a$. Frame $S_i$ is attached to the top-left corner of the active area of screen $i$, $B_i$ to its ChArUco board, and $C_k$ to the smartphone camera at photograph $k$.
+
+\begin{figure}[t]
+\centering
+\tikzset{
+  box/.style={draw, rounded corners=1.5pt, align=center, font=\footnotesize, inner sep=3pt, text width=6.6cm},
+  half/.style={box, text width=3.1cm},
+  arr/.style={-{Stealth[length=2mm]}, thick}
+}
+\begin{tikzpicture}
+\node[box] (a) {Inputs: resolution and PPI of each screen; camera intrinsics $K$ and $D$};
+\node[box, below=4mm of a] (b) {Generate one ChArUco board per screen\\(physical size derived from PPI)};
+\node[box, below=4mm of b] (c) {Photograph the screens with the smartphone\\(original and horizontally flipped images)};
+\node[box, below=4mm of c] (d) {Detect markers and estimate the pose of each visible board (PnP)};
+\node[half, below=5mm of d, xshift=-1.75cm] (e1) {Screens seen directly:\\fuse relative poses};
+\node[half, below=5mm of d, xshift=1.75cm] (e2) {Screens seen only in the mirror: mirror-assisted step};
+\node[box, anchor=north] (f) at ($(e1.south)!0.5!(e2.south)+(0,-5mm)$) {Poses in the frame of the reference screen};
+\node[box, below=4mm of f] (g) {Perceptual alignment (collinearity across seams)};
+\node[box, below=4mm of g] (h) {Output: screen corners in the common frame};
+\draw[arr] (a) -- (b);
+\draw[arr] (b) -- (c);
+\draw[arr] (c) -- (d);
+\draw[arr] (d.south) -- ++(0,-2.5mm) -| (e1.north);
+\draw[arr] (d.south) -- ++(0,-2.5mm) -| (e2.north);
+\draw[arr] (e1.south) -- ++(0,-2.5mm) -| (f.north);
+\draw[arr] (e2.south) -- ++(0,-2.5mm) -| (f.north);
+\draw[arr] (f) -- (g);
+\draw[arr] (g) -- (h);
+\end{tikzpicture}
+\caption{Pipeline of the proposed calibration method.}
+\label{fig:pipeline}
+\end{figure}
+
+\begin{algorithm}[t]
+\caption{Multi-screen calibration}
+\label{alg:pipeline}
+\begin{algorithmic}[1]
+\Require Resolution and PPI of each screen; camera intrinsics $K$ and distortion $D$
+\Ensure Corners of every screen in the frame of screen 1
+\For{each screen $i$}
+  \State Display ChArUco board of physical square size $\ell$
+\EndFor
+\State Take photographs $I_1,\dots,I_K$ of the screens
+\For{each photograph $I_k$}
+  \State Detect markers in $I_k$ and in its flipped copy $\bar I_k$
+  \State Estimate $T_{C_k\leftarrow B_i}$ of each detected board
+\EndFor
+\State Fuse screens seen directly into a pose graph
+\State Estimate the mirror plane from a board seen both directly and in the mirror
+\State Reflect the poses of screens seen only in the mirror and add them to the graph
+\State Compose transforms from screen 1 to obtain $T_{S_1\leftarrow S_i}$
+\State Refine each seam by perceptual alignment
+\State \Return corners of each screen in the frame of screen 1
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Board Generation and Metric Scale}
+For each screen $i$, a ChArUco board is rendered at a one-to-one pixel mapping, with the operating system's display scaling disabled so that no interpolation occurs. Its position on the screen, given by the pixel offset $(u_i, v_i)$ of its top-left corner from the top-left corner of the active area, is stored. The pixel pitch of the panel is $p_i = 25.4/\mathrm{PPI}_i$ millimeters per pixel, where the pixel density is obtained either from the panel specification or from its resolution $(w_i, h_i)$ and diagonal $d_i$ in inches as $\mathrm{PPI}_i = \sqrt{w_i^2 + h_i^2}/d_i$. A board whose squares measure $s_i$ pixels has squares of physical side $\ell_i = s_i\,p_i$. We choose $s_i = \mathrm{round}(\ell/p_i)$ so that all boards share approximately the same physical square size $\ell$ regardless of the pixel density of the panel.
+
+Since the board lies on the screen plane, the transform between the board frame and the screen frame is a pure translation, $T_{S_i\leftarrow B_i} = \mathrm{Trans}(u_i p_i,\, v_i p_i,\, 0)$. Moreover, the screen corners are known in the screen frame: they are $(0,0,0)$, $(w_i p_i, 0, 0)$, $(0, h_i p_i, 0)$ and $(w_i p_i, h_i p_i, 0)$. Because the scale comes from the panel and not from a ruler, all the poses recovered by the method are metric.
+
+\subsection{Pose Estimation from Photographs}
+For each photograph $I_k$, the ArUco markers are detected and the ChArUco corners are interpolated from them. The pose of each visible board is then obtained by solving the PnP problem with the camera intrinsics $K$ and distortion coefficients $D$ estimated in Section~\ref{sec:II}. The result is refined by Levenberg--Marquardt minimization of the reprojection error, giving $T_{C_k\leftarrow B_i}$. A board is discarded if fewer than a minimum number of corners are detected or if its reprojection error exceeds a threshold. Taking several photographs from different positions reduces the effect of the pose ambiguity of planar targets seen at oblique angles, since a wrong pose in one photograph is not repeated in the others.
+
+\subsection{Fusion in a Common Frame}
+When two screens $i$ and $j$ are seen in the same photograph $k$, the relative pose between them is
+\begin{equation}
+T^{(k)}_{S_i\leftarrow S_j} = T_{S_i\leftarrow B_i}\,\big(T_{C_k\leftarrow B_i}\big)^{-1}\,T_{C_k\leftarrow B_j}\,\big(T_{S_j\leftarrow B_j}\big)^{-1}.
+\label{eq:pair}
+\end{equation}
+The camera pose cancels out of \eqref{eq:pair}, so the smartphone does not need to be tracked or held in a known position and can be moved freely between photographs.
+
+A given pair of screens usually has several estimates, one per photograph in which both are visible. They are combined by taking the median of the translations and the chordal mean of the rotations, after discarding estimates that deviate from the median by more than a threshold. The screens are then treated as the nodes of a graph whose edges are the combined pair estimates. The pose of each screen with respect to screen~1 is obtained by composing the edges along the path from screen~1 that has the largest number of supporting photographs.
+
+% >>> NOVO: subsecao de ajuste de feixes (bundle adjustment)
+\subsection{Joint Refinement by Bundle Adjustment}
+\label{sec:ba}
+The combination above treats photographs independently. For screens seen directly, the pose can be refined further by imposing that the screens do not move between photographs. A bundle adjustment estimates one shared pose $T_{S_1\leftarrow S_j}$, the pose of every camera $C_k$, the camera intrinsics and, optionally, a scale factor $\sigma_j$ for the physical size of screen $j$, by minimizing the robust (Huber) reprojection error $\rho(\cdot)$ of all corners of all photographs,
+\begin{equation}
+\min \sum_{k}\sum_{i}\sum_{m} \rho\!\left(\big\|\pi\big(T_{C_k\leftarrow S_1}\,T_{S_1\leftarrow S_i}\,X_{im}(\sigma_i)\big)-u_{kim}\big\|^2\right),
+\label{eq:ba}
+\end{equation}
+where $\pi$ is the camera projection, $X_{im}$ the metric coordinates of corner $m$ of screen $i$, $u_{kim}$ its detection, and $\sigma_1=1$, since the reference screen is the only ruler of the system. The estimate of the previous subsection is the initialization. The scale of screen $j$ is observable because the parallax between viewpoints removes the ambiguity between a larger, more distant screen and a smaller, closer one, so varying the viewpoint matters more than adding photographs from the same place.
+
+\subsection{Mirror-Assisted Calibration}
+A screen that cannot be seen directly by the camera may still be seen in the reflection of a planar mirror. The reflection of a board is a mirrored pattern, which the marker decoder does not recognize. Each photograph is therefore also processed after a horizontal flip, which restores the pattern. The intrinsics are adapted to the flipped image by replacing the principal point $c_x$ by $W - c_x$, where $W$ is the image width. Let $(\bar R, \bar t)$ be the pose estimated from the flipped image for a board seen in the mirror and $F = \mathrm{diag}(-1, 1, 1)$. A board point $X$, expressed in board coordinates, appears in the camera frame at the virtual position
+\begin{equation}
+\tilde x = F\,(\bar R X + \bar t).
+\label{eq:virtual}
+\end{equation}
+
+The mirror plane $n^\top x = d$, with $\|n\|=1$, is estimated from a board that is seen both directly and in the mirror, in the same photograph. For each board point, let $x_m$ be its direct position and $\tilde x_m$ its virtual position given by \eqref{eq:virtual}. The mirror plane is the perpendicular bisector of each segment $x_m\tilde x_m$, so that
+\begin{equation}
+n \propto \sum_{m=1}^{M} \frac{x_m-\tilde x_m}{\|x_m-\tilde x_m\|},\qquad d = \frac{1}{M}\sum_{m=1}^{M} n^\top\,\frac{x_m+\tilde x_m}{2}.
+\label{eq:plane}
+\end{equation}
+For a screen $j$ that is seen only in the mirror, with pose $(\bar R_j, \bar t_j)$ estimated from the flipped image, its real pose is obtained by reflecting the virtual position across the mirror plane. With $H = I - 2nn^\top$, this gives
+\begin{equation}
+R_j = H F \bar R_j, \qquad t_j = H F \bar t_j + 2dn.
+\label{eq:reflect}
+\end{equation}
+The determinant of $R_j$ is $+1$, since the two reflections $H$ and $F$ cancel each other, which is used as a consistency check. The pair $(R_j, t_j)$ is then treated as the pose $T_{C_k\leftarrow B_j}$ in \eqref{eq:pair}, and the screen enters the same pose graph as the screens seen directly. Because the mirror plane is estimated in every photograph, the mirror can be placed freely. A front-surface mirror is preferred, since the glass of a common mirror refracts the light and introduces a small error.
+
+\subsection{Perceptual Alignment}
+After the previous steps, a residual error of a few millimeters may remain in the pose of each screen, which appears as a discontinuity at the seam. The perceptual alignment step corrects it by relying on the viewer's ability to judge whether a line is straight. For each pair of adjacent screens, a set of straight 3D lines that cross the seam is rendered with the estimated geometry, from a known viewpoint in front of the screens. If the geometry is correct, each line appears as a single straight line; otherwise it breaks or shifts at the seam. At least two lines with different directions are shown, so that both the offset and the relative rotation between the screens are constrained.
+
+The user adjusts, with the keyboard, a small correction transform $\Delta T_j$ (three translations and three rotations) of the screen being aligned, until the lines look collinear across the seam. The pose is then updated as $T_{S_1\leftarrow S_j} \leftarrow \Delta T_j\,T_{S_1\leftarrow S_j}$. The screens are aligned in order of increasing distance from the reference screen, so that the screens already aligned serve as reference for the next ones.
+
+\subsection{Output}
+The result of the method is, for each screen, its pose $T_{S_1\leftarrow S_i}$ and the four corners of its active area expressed in the common frame, obtained by applying this pose to the corners defined in the board generation step. These corners are stored in a calibration file, ready to be used by the off-axis rendering stage. Since the procedure needs only a few photographs, it can be repeated whenever a screen is moved.
+
+\subsection{Rendering Prototype}
+\label{sec:proto}
+The rendering stage that will consume the output of the method was implemented as a single-screen prototype (Section~\ref{sec:impl}). Fig.~\ref{fig:prototype} shows three frames produced by its rendering code for a viewer at a distance of 60~cm from the screen plane. The horizontal eye position $x$ (measured from the center of the screen and positive to the viewer's right) was set manually to $-12$, $0$ and $+12$~cm instead of being estimated from the webcam. The scene is a box whose open face has the same dimensions as the screen, with three cubes floating inside it.
+
+In all three frames, the opening of the box coincides with the border of the screen, so the bezel can act as the frame of a window. The far wall of the box and the cubes, in contrast, are displaced on the screen by amounts that depend on their depth, and different side faces of the cubes become visible from one frame to the next (for instance, the left face of the cube on the right in Fig.~\ref{fig:prototype}(a) and the right face of the cube on the upper left in Fig.~\ref{fig:prototype}(c)). With several screens, this behavior depends on the screen geometry returned by the method: an error of a few millimeters in the pose of a screen would displace the part of the scene shown on it with respect to its neighbors.
+
+In the single-screen prototype, the dimensions of the screen and the offset of the webcam from its center are constants entered by hand in a configuration file. The renderer was then extended to several screens, with the pose of each one read from the calibration file produced by the method (Section~\ref{sec:two}). The webcam is rigidly attached to the notebook screen, which defines the common frame, so the pose of the tracking camera is a constant of that frame and is not estimated by the method presented here.
+
+% >>> NOVO: renderizacao em duas telas e correcao de guinada
+\subsection{Two-Screen Rendering and Yaw Correction}
+\label{sec:two}
+The renderer was extended to several screens; it reads the calibration file and opens one full-screen window per monitor. For each screen, the eye is expressed in the local frame of that screen and the scene is projected on its plane with the off-axis projection of Kooima~\cite{kooima2009generalized}, which for a single screen is identical to the prototype above. The painter's order is computed once in the world frame, so occlusion agrees on both sides of the seam, and each screen shows only what lies behind its own plane, like a real window. Looking at the neighboring monitor turns the head, which shrinks the distance between the irises in the image and biases the estimated distance. The head rotation provided by MediaPipe is therefore used as a correction: for a head rotated by $\psi$ and off the optical axis by $\phi$, the iris distance scales by $\cos(\psi+\phi)/\cos\phi$. For a head turned by $30^\circ$ on the optical axis, ignoring this effect overestimates the distance by $1/\cos 30^\circ-1\approx 15\%$, about 9~cm at 60~cm. Test scenes include a room seen by both screens and an \emph{alignment} scene with straight rods across the seam, which gives a visual check of the calibration: a rod looks continuous only if the pose is correct.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{fig_head_positions.pdf}
+\caption{Output of the rendering stage of the prototype for a viewer 60~cm from the screen plane, with the eye at the height of the center of the screen and the horizontal position $x$, measured from the center of the screen and positive to the viewer's right, set manually to (a) $-12$~cm, (b) $0$ and (c) $+12$~cm.}
+\label{fig:prototype}
+\end{figure*}
+
+\rigel{
+AC Semana 8:
+Nesse momento já teremos a seção Introdução, a seção II e a Seção III que trata do método que o grupo propõe.
+Atividade relativa a parte escrita: Elaborar a seção IV que deverá tratar sobre os resultados experimentais:
+
+(1) Apresente, em detalhes, os resultados qualitativos e quantitativos obtidos até o momento. No mínimo resultados qualitativos.
+
+(2) Elabore o Abstract e Conclusions.}
+
+\rigel{AC Semana 9: Continuar na elaboração da seção IV que deverá tratar sobre os resultados experimentais:
+
+(1) Introduza na Seção IV (Results), em detalhes, os resultados quantitativos obtidos (além de resultados qualitativos já conseguidos).
+
+(2) Refine o abstract. Na última linha do abstract devemos inserir algum resultado que seja interessante para o leitor e que represente algum aspecto considerado como a maior contribuição do grupo
+
+(3) Refine a seção Conclusions. Insira resultados que resumam a avaliação do sistema embarcado proposto.
+}
+\section{Results and Discussion}
+\label{sec:IV}
+
+\subsection{Planned Evaluation Protocol}
+The calibration will be evaluated with the configuration described in Section~\ref{sec:II}. Four quantities will be measured. The first is the mean reprojection error of the detected board corners, in pixels, which measures the quality of the pose estimation in each photograph. The second is the position error of the screen corners, in millimeters, computed as the distance between each corner estimated by the method and its position measured with a tape measure. The third is the visible discontinuity at the seam between the two screens, which will be evaluated qualitatively by rendering straight lines across it. The fourth is the time needed to run a calibration.
+
+The three stages of the method will be evaluated cumulatively: ChArUco markers only, with the mirror-assisted step, and with the perceptual alignment. The corner position error, the reprojection error and the calibration time will be reported at each stage under the two lighting conditions described in Section~\ref{sec:II}. The results reported in the next subsections are partial: they were obtained with the rendering stage of the prototype (Section~\ref{sec:impl}) and, for the ChArUco stage, on simulated photographs (Section~\ref{sec:sim}); the evaluation of the calibration procedure on real photographs, following this protocol, is still to be carried out.
+
+\subsection{Qualitative Results}
+Figs.~\ref{fig:prototype} and~\ref{fig:distance} show the output of the rendering stage for viewer positions set manually, without webcam tracking. Fig.~\ref{fig:prototype}, discussed in Section~\ref{sec:proto}, shows the effect of moving the eye sideways. Fig.~\ref{fig:distance} varies the distance between the viewer and the screen for $x=0$. As the distance grows from 35 to 90~cm, both the far wall of the box and the cubes occupy a growing fraction of the screen, as happens when one steps back from a window and sees a narrower part of the scene through it. Both behaviors are those of a window, as expected from the projection model. These frames illustrate the rendering stage, not the accuracy or the latency of the head tracking. No images of detected markers, of the mirror-assisted step or of lines across a seam are shown, since they require the calibration experiments described in Section~\ref{sec:II}.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{fig_viewing_distance.pdf}
+\caption{Output of the rendering stage of the prototype for $x=0$, with the eye at the height of the center of the screen and the distance $z$ between the viewer and the screen set manually to (a) 35~cm, (b) 60~cm (the same frame as Fig.~\ref{fig:prototype}(b)) and (c) 90~cm. As the viewer moves away, a narrower part of the box is seen through the screen.}
+\label{fig:distance}
+\end{figure*}
+
+\subsection{Quantitative Results}
+Table~\ref{tab:results} lists the parameters and quantities available so far for the rendering prototype. The focal length of the webcam was estimated once, with the viewer at the calibration distance and an assumed interpupillary distance. The resulting focal length of 970.1~px is inversely proportional to the assumed interpupillary distance. The horizontal field of view of $66.8^\circ$ that it implies for $1280\times720$ frames is inside the 55--78$^\circ$ range that the focal-length script of the prototype lists as typical of notebook webcams. Since the distance to the viewer is inversely proportional to the distance between the irises in pixels, the standard deviation of 0.12~px observed during the capture corresponds to a variation of about 0.7~mm in the estimated distance.
+
+The active area of the notebook display was not measured with a ruler. It was derived from the panel's Extended Display Identification Data (EDID) and the size of a standard 15.6-inch 16:9 panel, with an uncertainty of about 1~mm. The pixel density and the pixel pitch in the table follow from the resolution and the 15.6-inch diagonal.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Parameters of the rendering prototype. The focal length, the field of view and the distance noise are computed from the other values; the pixel density and the pixel pitch follow from the resolution and the 15.6-inch diagonal of the notebook display, whose active area was derived from EDID data, not measured.}
+\label{tab:results}
+\begin{tabular}{lr}
+\hline
+Quantity & Value \\
+\hline
+Webcam frame size & $1280\times720$ px \\
+Assumed interpupillary distance & 64 mm \\
+Webcam calibration distance & 594 mm \\
+Webcam calibration frames & 90 \\
+Iris distance (median $\pm$ std) & $104.52 \pm 0.12$ px \\
+Focal length & 970.1 px \\
+Horizontal field of view & $66.8^\circ$ \\
+Distance noise (webcam) & 0.7 mm \\
+Notebook display resolution & $1920\times1080$ px \\
+Notebook display area (EDID) & $345\times194$ mm \\
+Pixel density / pixel pitch & 141.2 PPI / 0.180 mm \\
+Loop rate (webcam-limited) & about 20 fps \\
+\hline
+\end{tabular}
+\end{table}
+
+These values characterize the tracking and display parameters on which the rendering stage depends, not the accuracy of the calibration. The pitch of the pixels, obtained from the resolution and diagonal of the panel, is the same quantity that the board generation step of Section~\ref{sec:III} uses to give metric scale to ChArUco boards. We report neither the head-position noise and the tracking latency in live operation, nor the corner position error, the reprojection error and the calibration time defined in the evaluation protocol, on real photographs.
+
+% >>> NOVO: resultados quantitativos simulados
+\subsection{Simulated Calibration Results}
+\label{sec:sim}
+Since real photographs were not yet available, the ChArUco stage was evaluated on simulated photographs with known ground truth, produced by the photograph simulator of the repository: a 15.6-inch notebook and a 24-inch monitor at $35^\circ$ and 3~cm from it, photographed at $4000\times3000$ px from random positions at 0.6--1.5~m. Three severity levels (clean, typical and poor) add blur, sensor noise and JPEG compression and, for the last two, moir\'e, glare, focus breathing and principal-point jitter. Four or five pools of 15 photographs were generated per level, and the first $N$ photographs of each pool were used. Two estimators are compared: the median and chordal-mean fusion of Section~\ref{sec:III} (PnP+mean) and the bundle adjustment of Section~\ref{sec:ba} (BA), with the monitor size known and, in a third variant, estimated (BA+size). The metrics are the rotation error, the translation error and the worst error among the four corners of the monitor, reported as medians (maxima) over pools.
+
+Table~\ref{tab:sim} lists the results with ten photographs. Pooling the typical and poor levels, BA lowers the median worst-corner error from 0.30 to 0.15~mm and the maximum from 1.01 to 0.21~mm, and rotation errors stay below $0.05^\circ$ for both estimators. With clean photographs both are below 0.05~mm. The advantage is larger with fewer photographs: PnP+mean has 2.8 times the median error of BA with four photographs and 2.0 times with ten. Estimating the monitor size instead of assuming it raises the median worst-corner error to 0.22~mm (maximum 0.32~mm). Calibration takes 0.2--0.8~s with BA against about 0.02~s without it, excluding corner detection. These values come from a simulator written by the same group, so they bound the error under the modeled effects, not on real photographs, where the panel size of the notebook, which is the ruler of the system, should dominate. Fig.~\ref{fig:print} shows the two-screen setup running the renderer.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Simulated calibration error with ten photographs, median (maximum) over pools. BA: bundle adjustment; BA+size: monitor size also estimated.}
+\label{tab:sim}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llccc}
+\hline
+Photos & Method & Rot.\ ($^\circ$) & Transl.\ (mm) & Worst corner (mm) \\
+\hline
+Clean   & PnP+mean & 0.001 (0.002) & 0.02 (0.03) & 0.02 (0.04) \\
+        & BA       & 0.001 (0.005) & 0.00 (0.02) & 0.01 (0.04) \\
+Typical & PnP+mean & 0.015 (0.023) & 0.17 (0.43) & 0.21 (0.53) \\
+        & BA       & 0.015 (0.017) & 0.04 (0.07) & 0.11 (0.16) \\
+        & BA+size  & 0.016 (0.021) & 0.11 (0.16) & 0.23 (0.32) \\
+Poor    & PnP+mean & 0.035 (0.049) & 0.29 (0.83) & 0.47 (1.01) \\
+        & BA       & 0.016 (0.025) & 0.09 (0.11) & 0.16 (0.21) \\
+        & BA+size  & 0.016 (0.027) & 0.12 (0.13) & 0.22 (0.26) \\
+\hline
+\end{tabular}
+\end{table}
+
+% >>> ESPACO RESERVADO PARA O PRINT/FOTO DO SISTEMA REAL (duas telas rodando).
+% Para preencher: salve a imagem em figs/ (ex.: fig_duas_telas.png), apague a linha \fbox{...}
+% abaixo e coloque no lugar: \includegraphics[width=\columnwidth]{fig_duas_telas.png}
+% e ajuste a legenda ao que a imagem mostra.
+\begin{figure}[t]
+\centering
+\fbox{\parbox[c][5cm][c]{0.92\columnwidth}{\centering\textbf{[ESPA\c{C}O RESERVADO PARA O PRINT/FOTO]}\\[2mm]\small Two-screen setup running the renderer}}
+\caption{Two-screen setup (notebook and external monitor) running the renderer.}
+\label{fig:print}
+\end{figure}
+
+\section{Conclusion}
+\label{sec:V}
+
+This work proposed a largely automatic procedure to calibrate the geometry of a multi-screen display for head-coupled perspective rendering using only an ordinary smartphone. The method uses each screen as its own calibration target by displaying ChArUco markers whose physical size is derived from the pixel density of the panel. It recovers screens outside the direct view of the camera through a planar mirror and refines the relative poses through a perceptual alignment based on collinearity across the seams. No external tracking equipment or manual measurement of the screens is required, and the only camera calibration needed is the estimation of the smartphone's intrinsic parameters from a planar pattern.
+
+The partial results available so far come from the head-coupled rendering stage, which consumes the calibrated geometry and now drives two screens. It tracks the head of the viewer with a webcam and renders the scene with an off-axis projection on each screen, in a tracking loop limited by the webcam to about 20 frames per second, with a distance noise of about 0.7~mm. The calibration itself has not yet been evaluated on real photographs, so whether the millimeter-level accuracy required at the seams is achieved remains to be shown by the planned experiments.
+
+% >>> NOVO (conclusao): resultados simulados
+On simulated photographs, refining the ChArUco poses by bundle adjustment places the second screen with a median worst-corner error of 0.15~mm and a maximum of 0.21~mm with ten photographs, against 0.30 and 1.01~mm for per-photograph averaging, and 0.22 and 0.32~mm when the monitor size is also estimated. The mirror-assisted and perceptual steps, and the calibration on real photographs, have not been evaluated yet.
+
+The calibration output is already integrated with the head-tracking and off-axis rendering stages: the two-screen renderer reads the calibration file and applies a yaw correction to the head tracking. As future work, we intend to evaluate the calibration on real photographs against tape-measure ground truth, under the two lighting conditions of the planned protocol, and to extend it from two screens to more screens and different arrangements. We also plan to implement the mirror-assisted step, to automate the perceptual alignment, which is currently only a visual check, and to estimate the offset of the tracking webcam from the notebook screen instead of entering it by hand in a configuration file.
+
+\bibliographystyle{ieeetr}
+\bibliography{refs}
+
+\end{document}
