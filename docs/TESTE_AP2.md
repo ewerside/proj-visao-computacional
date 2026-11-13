@@ -200,6 +200,8 @@ Isto ainda não usa o celular. Serve para ver as duas telas funcionando e é o p
 
 ## 8. VOCÊ: calibração com o celular (15 min)
 
+> **Atalho:** `python calibrar_telas.py celular` faz os passos 8.1, 8.4 e 8.5 sozinho. Ele mostra um QR code no notebook; o celular abre a página, tira as fotos pela câmera dele e manda direto, e o botão "Calcular" da página grava o `telas.json`. As dicas de 8.2 e 8.3 continuam valendo. Celular e notebook na mesma rede.
+
 ### 8.1 Mostrar os padrões
 
 ```bash

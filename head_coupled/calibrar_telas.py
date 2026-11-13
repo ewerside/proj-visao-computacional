@@ -1,7 +1,12 @@
 """Calibracao das duas telas com o celular: onde o monitor externo esta em
 relacao ao notebook. Gera o telas.json que o main.py usa para desenhar nas duas.
 
-PASSO A PASSO (detalhado em docs/TESTE_AP2.md)
+JEITO MAIS RAPIDO: python calibrar_telas.py celular
+  Mostra os padroes e um QR code. O celular le o QR, abre uma pagina, tira as
+  fotos pela camera dele e manda direto para ca; o botao Calcular da pagina
+  grava o telas.json. Celular e notebook na mesma rede. Ver celular.py.
+
+PASSO A PASSO COPIANDO AS FOTOS (detalhado em docs/TESTE_AP2.md)
   1. python calibrar_telas.py mostrar
        Cada tela mostra um padrao ChArUco em tela cheia, com o nome dela por
        cima. Confira que NOTEBOOK esta no notebook (senao aperte t), aperte
@@ -42,6 +47,7 @@ import config
 AQUI = os.path.dirname(os.path.abspath(__file__))
 PASTA_FOTOS = os.path.join(AQUI, "fotos")
 PASTA_DEBUG = os.path.join(AQUI, "dbg")
+PASTA_CELULAR = os.path.join(AQUI, "fotos_celular")     # uma subpasta por sessao
 EXTENSOES = (".jpg", ".jpeg", ".png")
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -66,7 +72,33 @@ def _rotulo(img_cinza, papel, dispositivo):
     return img
 
 
-def cmd_mostrar(args):
+def _rotulo_celular(img_cinza, papel, dispositivo, url, qr):
+    """Rotulo do modo celular: nome da tela e, no notebook, o QR code da pagina."""
+    img = cv2.cvtColor(img_cinza, cv2.COLOR_GRAY2BGR)
+    h, w = img.shape[:2]
+    s = h / 1080.0
+    x0, y0, x1, y1 = int(w * 0.12), int(h * 0.22), int(w * 0.88), int(h * 0.78)
+    cv2.rectangle(img, (x0, y0), (x1, y1), (30, 30, 30), -1)
+    cv2.putText(img, papel, (x0 + int(40 * s), y0 + int(140 * s)), FONT, 3.2 * s,
+                (0, 220, 255), max(2, int(8 * s)), cv2.LINE_AA)
+    if qr is not None:
+        lado = y1 - y0 - int(60 * s)
+        q = cv2.resize(qr, (lado, lado), interpolation=cv2.INTER_NEAREST)
+        qx, qy = x1 - lado - int(30 * s), y0 + (y1 - y0 - lado) // 2
+        img[qy:qy + lado, qx:qx + lado] = q
+        linhas = ["1. Celular e notebook na mesma rede", "2. Leia o QR code com a camera",
+                  "3. Siga a pagina que abrir", url, "t troca as telas     q sai"]
+    else:
+        linhas = [dispositivo, "O QR code esta na tela do notebook",
+                  "t troca notebook <-> monitor     q sai"]
+    for i, txt in enumerate(linhas):
+        cv2.putText(img, txt, (x0 + int(40 * s), y0 + int((225 + 60 * i) * s)), FONT,
+                    1.0 * s, (230, 230, 230), max(1, int(2 * s)), cv2.LINE_AA)
+    return img
+
+
+def cmd_mostrar(args, servidor=None):
+    """servidor: celular.Servidor ja criado (comando celular), ou None."""
     import monitores
     import padroes
 
@@ -114,6 +146,8 @@ def cmd_mostrar(args):
         with open(destino, "w", encoding="utf-8") as fh:
             json.dump(dados, fh, indent=2, ensure_ascii=False)
         imgs = {i_nb: pads[0].imagem(), i_mon: pads[1].imagem()}
+        if servidor is not None:
+            servidor.definir_padroes(pads)
         for p in pads:
             mm = p.quad_px * p.tela.larg_m / p.tela.px_w * 1000
             print(f"  {p.tela.nome}: tabuleiro {p.cols}x{p.rows}, quadrado {p.quad_px} px "
@@ -122,13 +156,36 @@ def cmd_mostrar(args):
 
     imgs = gerar_e_salvar(i_nb, i_mon)
     print(f"\npadroes.json gravado em {destino}")
-    print("Confira os rotulos, aperte ESPACO para esconde-los e fotografe.\n"
-          "Tecla t troca notebook <-> monitor. q ou ESC sai.")
+    qr = None
+    if servidor is None:
+        print("Confira os rotulos, aperte ESPACO para esconde-los e fotografe.\n"
+              "Tecla t troca notebook <-> monitor. q ou ESC sai.")
+    else:
+        import celular
+        qr = celular.imagem_qr(servidor.url)
+        servidor.iniciar()
+        print(f"\nNo celular (mesma rede do notebook), leia o QR code ou abra:\n"
+              f"    {servidor.url}\n"
+              "Se o Windows perguntar, permita o Python na rede. O rotulo some quando o\n"
+              "celular abrir a pagina. Tecla t troca as telas, ESPACO mostra o QR de novo.")
     mostrar_rotulo = True
+    ja_conectou = False
     while True:
+        if servidor is not None:
+            if servidor.conectado and not ja_conectou:
+                ja_conectou, mostrar_rotulo = True, False
+                print("celular conectado: tire as fotos pela pagina")
+            if servidor.terminou:
+                break
         for i in (i_nb, i_mon):
             papel = "NOTEBOOK" if i == i_nb else "MONITOR"
-            img = _rotulo(imgs[i], papel, mons[i].dispositivo) if mostrar_rotulo else imgs[i]
+            if not mostrar_rotulo:
+                img = imgs[i]
+            elif servidor is None:
+                img = _rotulo(imgs[i], papel, mons[i].dispositivo)
+            else:
+                img = _rotulo_celular(imgs[i], papel, mons[i].dispositivo, servidor.url,
+                                      qr if i == i_nb else None)
             cv2.imshow(nomes[i], img)
         k = cv2.waitKey(50) & 0xFF
         if k in (ord("q"), 27):
@@ -151,9 +208,46 @@ def cmd_mostrar(args):
     if i_nb != monitores.escolher_notebook(mons):
         print("A escolha automatica tinha errado. Para nao precisar trocar toda vez,\n"
               f"ponha no config.py:  MONITOR_NOTEBOOK = {mons[i_nb].dispositivo!r}")
-    print("Proximo passo: copie as fotos para a pasta fotos/ e rode\n"
-          "    python calibrar_telas.py calcular")
+    if servidor is None:
+        print("Proximo passo: copie as fotos para a pasta fotos/ e rode\n"
+              "    python calibrar_telas.py calcular\n"
+              "(ou use  python calibrar_telas.py celular  para mandar as fotos pelo celular)")
     return 0
+
+
+# ================================================================ celular ===
+
+def cmd_celular(args):
+    """mostrar + servidor: o celular manda as fotos e pede o calculo pela pagina."""
+    import celular
+    destino = args.saida or config.PADROES_FILE
+
+    def calcular_sessao(pasta):
+        return calcular([pasta], caminho_padroes=destino, saida=args.telas,
+                        pasta_debug=PASTA_DEBUG, verbose=False)
+
+    try:
+        servidor = celular.Servidor(PASTA_CELULAR, calcular_sessao, args.porta)
+    except OSError as e:
+        print(f"nao consegui abrir a porta {args.porta}: {e}. Tente --porta 8766")
+        return 1
+    try:
+        cod = cmd_mostrar(args, servidor)
+    finally:
+        if servidor.thread.is_alive():
+            servidor.parar()
+    if cod == 0 and servidor.terminou:
+        r = servidor.resultado
+        g, q = r["resumo"], r["qualidade"]
+        print(f"\nCalibracao pronta com {r['n_fotos']} fotos: monitor a {g['lado']}, "
+              f"{g['angulo_entre_telas_graus']} graus entre as telas, "
+              f"{g['monitor_diagonal_pol']} pol, reprojecao {q['rms_reproj_px']} px")
+        for a in r["avisos"]:
+            print("AVISO: " + a)
+        print(f"fotos em {servidor.pasta}\nProximo passo:  python main.py")
+    elif cod == 0:
+        print("saiu sem calcular. As fotos recebidas ficaram em", servidor.pasta)
+    return cod
 
 
 # =============================================================== calcular ===
@@ -546,6 +640,17 @@ def main(argv=None):
                    help="dispositivo do monitor externo, se houver mais de um")
     m.add_argument("-o", "--saida", default=None, help="padroes.json (padrao: config)")
     m.set_defaults(func=cmd_mostrar)
+
+    e = sub.add_parser("celular", help="padroes nas telas + pagina para o celular mandar "
+                                       "as fotos (QR code) e calcular")
+    e.add_argument("--diagonal", type=float, default=config.MONITOR_DIAGONAL_POL,
+                   help="diagonal nominal do monitor externo, em polegadas")
+    e.add_argument("--monitor", default=None,
+                   help="dispositivo do monitor externo, se houver mais de um")
+    e.add_argument("-o", "--saida", default=None, help="padroes.json (padrao: config)")
+    e.add_argument("--telas", default=None, help="telas.json (padrao: config)")
+    e.add_argument("--porta", type=int, default=8765)
+    e.set_defaults(func=cmd_celular)
 
     c = sub.add_parser("calcular", help="calcula o telas.json a partir das fotos")
     c.add_argument("fotos", nargs="*", help="pasta ou arquivos (padrao: fotos/)")

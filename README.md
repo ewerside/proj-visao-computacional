@@ -69,6 +69,7 @@ As bibliotecas acima entregam peças soltas: pontos do rosto, cantos de marcador
 | `detectar.py` | Detecção dos cantos nas fotos de 12 MP e descarte de detecções inconsistentes | Fotos de tela têm moiré, reflexo e marcadores parciais |
 | `calibracao.py` | Média robusta de poses e **ajuste de feixes** próprio (jacobiano esparso, perda de Huber, estimativa do tamanho do monitor e da incerteza) | O OpenCV calibra uma câmera, mas não impõe que as duas telas estão paradas uma em relação à outra |
 | `calibrar_telas.py` | Fluxo completo `mostrar` / `calcular` / `manual`, avisos de qualidade e vista de cima (`dbg/planta.png`) | Uso em poucos minutos, sem app no celular |
+| `celular.py` | Servidor local e página web para o celular: QR code na tela, foto pela câmera nativa, conferência imediata dos cantos e cálculo pelo celular | Elimina a cópia manual das fotos e avisa na hora se uma foto não serve |
 | `simular.py` | Simulador de fotos de celular (desfoque, ruído, moiré, reflexo, JPEG) com resposta conhecida | Permite medir o erro da calibração sem hardware |
 | `avaliar.py` | Avaliação quantitativa: compara os estimadores em fotos simuladas e em fotos reais | É a comparação de métodos do artigo |
 | `anaglyph.py` | Modo anáglifo vermelho-ciano (bônus) | Estereoscopia com óculos de papelão |
@@ -121,6 +122,18 @@ python calibrar_telas.py mostrar    # padroes nas telas; tire as fotos com o cel
 python calibrar_telas.py calcular   # fotos em head_coupled/fotos/ -> telas.json
 python main.py                      # duas telas
 ```
+
+### Fotos direto do celular (sem copiar arquivos)
+
+```bash
+python calibrar_telas.py celular
+```
+
+As telas mostram os padrões e, no notebook, um **QR code**. O celular lê o QR e abre uma página servida pelo próprio notebook. Cada toque em "Tirar foto" abre a câmera do celular; a foto sobe em resolução total e a página responde na hora quantos cantos foram achados em cada tela e de onde tirar a próxima. O botão "Calcular" grava o `telas.json`. Não instala nada no celular.
+
+- Celular e notebook precisam estar na **mesma rede**. Se o Wi‑Fi isolar os aparelhos, ligue o roteador do celular e conecte o notebook nele.
+- Na primeira vez o Windows pergunta se o Python pode receber conexões: permita.
+- O servidor só existe enquanto o comando roda e só aceita pedidos com o código aleatório do QR. As fotos ficam em `head_coupled/fotos_celular/`.
 
 Teclas principais do `main.py`: `n` troca de cena, `d` painel de debug (posição do olho, fps), `y` liga/desliga a correção de guinada, `ESPAÇO` congela o olho, `f` liga/desliga o filtro, `3` anáglifo, `q` sai. A lista completa está no cabeçalho do `main.py`.
 

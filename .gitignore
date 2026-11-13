@@ -14,3 +14,4 @@ head_coupled/testes/saida/
 # angulo da tampa). Para versionar uma calibracao boa: git add -f telas.json
 head_coupled/telas.json
 head_coupled/padroes.json
+head_coupled/fotos_celular/
