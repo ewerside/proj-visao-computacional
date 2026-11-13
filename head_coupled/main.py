@@ -243,6 +243,15 @@ def main(argv=None):
         lista = [tls.tela_do_config()]
     elif len(lista) == 1:
         multi = False
+    if multi:
+        # Calibracao de duas telas, mas o monitor externo nao esta ligado agora:
+        # em vez de parar pedindo --uma-tela, abre so no notebook.
+        mons = monitores.listar_monitores()
+        if len(mons) < 2 or any(monitores.achar_monitor(mons, tl.monitor) is None
+                                for tl in lista):
+            print("monitor externo nao encontrado: abrindo com uma tela so. Para as duas "
+                  "telas, ligue o monitor e escolha Estender (Win+P).")
+            lista, multi = [tls.tela_do_config()], False
     janelas, tamanhos = abrir_janelas(lista, multi)
     px_w, px_h = tamanhos[0]
     cap = tracking.open_camera()

@@ -877,12 +877,16 @@ def _extras_miniatura_dinamico(t, piso_y):
 # Cena pensada para o anaglifo. O que o estereo mostra melhor e objeto solido,
 # de aresta marcada, espalhado em MUITAS profundidades e cruzando o plano da
 # tela: a disparidade muda de sinal quando a pedra passa de tras da tela para a
-# frente dela, e e ai que ela "sai". Para nao bater na moldura (violacao de
-# janela: um objeto na frente da tela cortado pela borda), so as pedras das
-# pistas centrais avancam para z > 0; as da periferia param antes.
+# frente dela, e e ai que ela "sai". Todas as pedras seguem em frente depois da
+# tela, ate a distancia tipica do espectador (ver AST_ALCANCE).
 
 AST_DEPTH = 0.90
-AST_FRENTE = 0.15
+# As pedras continuam vindo depois de cruzar o plano da tela, crescendo, e so
+# somem ao passar de onde o espectador costuma estar. Nao e a posicao medida do
+# olho: e a distancia tipica de uso, proporcional ao tamanho da tela (cerca de
+# 1.7 larguras, 60 cm numa tela de 15.6 pol). Perto da moldura a pedra aparece
+# cortada pela borda; e de proposito, para o efeito de "passar por voce".
+AST_ALCANCE = 1.7
 ROCHAS = [(132, 126, 120), (100, 108, 122), (124, 112, 142), (92, 98, 104)]
 _OCTA = np.array([(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)], float)
 _OCTA_F = [(0, 2, 4), (2, 1, 4), (1, 3, 4), (3, 0, 4),
@@ -916,7 +920,7 @@ def asteroides_dinamico(t, dims=None):
     largura, altura = _dims(dims)
     objs = []
     for p in _PEDRAS:
-        frente = AST_FRENTE * max(0.0, 1.0 - p["r"] / 0.55)
+        frente = AST_ALCANCE * largura
         curso = AST_DEPTH - 0.04 + frente
         z = -(AST_DEPTH - 0.04) + (p["fase"] + p["vel"] * t) % curso
         x, y = p["rx"] * largura * 0.42, p["ry"] * altura * 0.42

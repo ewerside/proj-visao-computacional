@@ -284,12 +284,16 @@ class App:
         d.text((cx - d.textlength(LEMA, font=f_l) / 2, self.px(318)), LEMA, font=f_l, fill=FRACO)
 
         _lista, motivo = self.estado_duas_telas()
+        um_monitor = len(monitores.listar_monitores()) < 2
+        sem_monitor = "Ligue o monitor externo (Win+P, Estender)" if um_monitor else None
+        if um_monitor:
+            motivo = sem_monitor
         itens = [
             ("Uma tela", "Cenas no notebook, com opção de 3D anáglifo.", lambda: self.ir("uma"), True, None),
             ("Duas telas", "O notebook e o monitor como janelas para o mesmo mundo.",
              lambda: self.ir("duas"), motivo is None, motivo),
             ("Calibrar telas", "Descobre onde o monitor está, com fotos do celular.",
-             lambda: self.ir("calibrar"), True, None),
+             lambda: self.ir("calibrar"), not um_monitor, sem_monitor),
             ("Configurações", "Medidas da tela, do monitor e da webcam.",
              lambda: self.ir("config"), True, None),
         ]
