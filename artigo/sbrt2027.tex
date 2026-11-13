@@ -30,7 +30,7 @@
 \markboth{XLV BRAZILIAN SYMPOSIUM ON TELECOMMUNICATIONS AND SIGNAL PROCESSING - SBrT 2027}{}
 
 \begin{abstract}
-Head-coupled perspective turns a screen into a window onto a 3D scene by redrawing it from the viewer's eye position. Using two screens requires the pose of the second screen relative to the first with millimeter accuracy. This paper presents a system that obtains this pose from about twelve photographs taken with an ordinary smartphone. Each screen displays a ChArUco board whose metric size follows from the panel dimensions; the photographs calibrate the phone camera and give one pose estimate per photograph, and a bundle adjustment enforces a single screen pose and also estimates the size of the second screen. A notebook webcam tracks the viewer and both screens are rendered with an off-axis projection. On real photographs, the bundle adjustment reduced the variation of the estimated screen corners across photograph subsets from 2.5~mm to 0.4~mm.
+Head-coupled perspective turns a screen into a window onto a 3D scene by redrawing it from the viewer's eye position. Using two screens requires the pose of the second screen relative to the first with millimeter accuracy. This paper presents a system that obtains this pose from about twelve photographs taken with an ordinary smartphone. Each screen displays a ChArUco board whose metric size follows from the panel dimensions; the photographs calibrate the phone camera and give one pose estimate per photograph, and a bundle adjustment enforces a single screen pose and also estimates the size of the second screen. A notebook webcam tracks the viewer and both screens are rendered with an off-axis projection. On real photographs of two different setups, the bundle adjustment reduced the variation of the estimated screen corners across photograph subsets from 2.5 to 0.4~mm and from 5.0 to 1.1~mm.
 \end{abstract}
 \begin{keywords}
 Multi-screen calibration, fish tank VR, ChArUco markers, bundle adjustment, head-coupled perspective.
@@ -113,24 +113,24 @@ Each scene point is drawn where the line from the eye to the point crosses the s
 \label{sec:IV}
 
 \subsection{Setup and Qualitative Results}
-The prototype, shown in Fig.~\ref{fig:setup}, uses a notebook with a 15.6-inch screen ($1920\times1080$~px, $345.4\times194.3$~mm) and a 23-inch external monitor at its left. Twelve photographs of $4080\times3072$~px were taken with a Google Pixel 7 Pro from different positions; all twelve showed both boards, with 72 corners detected per screen in most of them. The calibration placed the monitor at $27.8^\circ$ from the notebook screen, with a 3.3~cm gap between the inner edges. Fig.~\ref{fig:planet} shows a scene rendered on both screens with this calibration: a ringed planet behind the seam, half on each screen. The sphere and the rings are continuous across the seam only if the estimated pose is correct. An alignment scene with straight rods crossing the seam provides the same visual check. Rendering both screens takes 11 to 17~ms per frame, below the period of the webcam, which limits the loop to about 20~frames per second.
+The prototype uses a notebook with a 15.6-inch screen ($1920\times1080$~px, $345.4\times194.3$~mm) and an external monitor. Two sessions were recorded, each with twelve photographs of $4080\times3072$~px taken with a Google Pixel 7 Pro from different positions: session~1 with a 23-inch monitor at the left of the notebook, and session~2, shown in Fig.~\ref{fig:setup}, with a 21-inch monitor at its right. All photographs showed both boards. The calibration placed the monitor at $27.8^\circ$ from the notebook screen with a 3.3~cm gap in session~1, and at $32.7^\circ$ with a 2.0~cm gap in session~2. Fig.~\ref{fig:planet} shows a scene rendered on both screens with the calibration of session~2: a ringed planet behind the seam, half on each screen. The sphere and the rings are continuous across the seam only if the estimated pose is correct. An alignment scene with straight rods crossing the seam provides the same visual check. Rendering both screens takes 11 to 17~ms per frame, below the period of the webcam, which limits the loop to about 20~frames per second.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.92\columnwidth]{fig_setup.jpg}
-\caption{Prototype during calibration: ChArUco boards on the monitor and on the notebook, and the QR code that opens the capture page on the phone.}
+\caption{Prototype during calibration (session~2): ChArUco boards on the notebook and on the external monitor, photographed with the smartphone.}
 \label{fig:setup}
 \end{figure}
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{fig_planet.png}
-\caption{Scene rendered on the monitor (left) and on the notebook (right) with the calibration from real photographs.}
+\caption{Scene rendered on the notebook (left) and on the monitor (right) with the calibration from real photographs.}
 \label{fig:planet}
 \end{figure}
 
 \subsection{Quantitative Results}
-Three estimators are compared: PnP+mean, the bundle adjustment with the monitor size given (BA) and with the size estimated (BA+size). On simulated photographs with known ground truth, generated with blur, sensor noise, moir\'e, glare and JPEG compression at two severity levels, the metric is the largest position error among the four monitor corners, over five sets of ten photographs. On the real photographs there is no ground truth, so the metric is repeatability: each estimator is run on 30 random subsets of ten photographs and the deviation of the monitor corners from their mean is reported.
+Three estimators are compared: PnP+mean, the bundle adjustment with the monitor size given (BA) and with the size estimated (BA+size). On simulated photographs with known ground truth, generated with blur, sensor noise, moir\'e, glare and JPEG compression at two severity levels, the metric is the largest position error among the four monitor corners, over five sets of ten photographs. On the real photographs there is no ground truth, so the metric is repeatability: in each session, each estimator is run on 30 random subsets of ten photographs and the deviation of the monitor corners from their mean is reported.
 
 \begin{table}[t]
 \centering
@@ -144,17 +144,18 @@ Photographs & PnP+mean & BA & BA+size \\
 \hline
 Simulated, typical & 0.21 (0.53) & 0.11 (0.16) & 0.23 (0.32) \\
 Simulated, poor    & 0.47 (1.01) & 0.16 (0.21) & 0.22 (0.26) \\
-Real, 12 photos    & 2.5 (5.5)   & 0.7 (2.3)   & 0.4 (1.2) \\
+Real, session 1    & 2.5 (5.5)   & 0.7 (2.3)   & 0.4 (1.2) \\
+Real, session 2    & 5.0 (9.0)   & 1.8 (5.1)   & 1.1 (2.9) \\
 \hline
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:results} lists the results. In simulation the bundle adjustment reduces the maximum error from 1.01 to 0.21~mm with poor photographs, and estimating the monitor size costs about 0.1~mm. On the real photographs the difference is larger: the corners vary by 2.5~mm with PnP+mean and by 0.4~mm with BA+size. Here BA+size is the best estimator because the nominal diagonal supplied for the monitor (24~inches) was wrong: the adjustment estimated $51.0\times28.7$~cm, which matches the $509\times286$~mm that the monitor itself reports to the operating system. The root-mean-square reprojection error was 1.13~px (0.86~px on the notebook and 1.35~px on the monitor, whose panel is damaged). The yaw correction was verified numerically on 2000 synthetic head poses, where it recovers the distance exactly, but its gain was not measured on a real face, and the calibration was not compared with a tape measure; these are limitations of the present evaluation.
+Table~\ref{tab:results} lists the results. In simulation the bundle adjustment reduces the maximum error from 1.01 to 0.21~mm with poor photographs, and estimating the monitor size costs about 0.1~mm. On the real photographs the difference is larger: the corners vary by 2.5~mm with PnP+mean and by 0.4~mm with BA+size in session~1, and by 5.0 and 1.1~mm in session~2. BA+size is the best estimator in both sessions because the nominal diagonal supplied for the monitor was wrong in both. In session~1, where 24~inches had been entered, the adjustment estimated $51.0\times28.7$~cm, which matches the $509\times286$~mm that the monitor itself reports to the operating system. The root-mean-square reprojection error was 1.13~px in session~1 and 2.66~px in session~2, whose photographs were taken with a wider lens that the two-coefficient distortion model fits less well. The yaw correction was verified numerically on 2000 synthetic head poses, where it recovers the distance exactly, but its gain was not measured on a real face, and the calibration was not compared with a tape measure; these are limitations of the present evaluation.
 
 \section{Conclusion}
 \label{sec:V}
 
-This work presented a system that calibrates the geometry of a two-screen display with photographs from an ordinary smartphone and uses it for head-coupled perspective rendering. The screens act as calibration targets, the phone camera is calibrated from the same photographs, and a bundle adjustment yields a single pose and the size of the second screen. On real photographs it reduced the variation of the estimated monitor corners from 2.5~mm, with per-photograph averaging, to 0.4~mm, and recovered the true size of a monitor whose nominal diagonal had been entered incorrectly. The complete system, from the capture page on the phone to the two-screen renderer, runs on a notebook with its built-in webcam. As future work, we intend to compare the calibration with physical measurements, to measure the yaw correction on real faces, and to extend the calibration to more than two screens and to screens outside the direct view of the phone.
+This work presented a system that calibrates the geometry of a two-screen display with photographs from an ordinary smartphone and uses it for head-coupled perspective rendering. The screens act as calibration targets, the phone camera is calibrated from the same photographs, and a bundle adjustment yields a single pose and the size of the second screen. On real photographs of two setups it reduced the variation of the estimated monitor corners from 2.5 to 0.4~mm and from 5.0 to 1.1~mm, relative to per-photograph averaging, and recovered the true size of a monitor whose nominal diagonal had been entered incorrectly. The complete system, from the capture page on the phone to the two-screen renderer, runs on a notebook with its built-in webcam. As future work, we intend to compare the calibration with physical measurements, to measure the yaw correction on real faces, and to extend the calibration to more than two screens and to screens outside the direct view of the phone.
 
 \bibliographystyle{ieeetr}
 \bibliography{referencias}

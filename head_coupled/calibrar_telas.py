@@ -94,9 +94,15 @@ def _rotulo_celular(img_cinza, papel, dispositivo, url, qr, tunel=False):
     else:
         linhas = [dispositivo, "O QR code esta na tela do notebook",
                   "t troca notebook <-> monitor     q sai"]
+    # Largura livre para o texto: ate o QR code (ou ate a borda do painel).
+    livre = (qx if qr is not None else x1) - x0 - int(70 * s)
     for i, txt in enumerate(linhas):
+        escala = 1.0 * s
+        larg = cv2.getTextSize(txt, FONT, escala, max(1, int(2 * s)))[0][0]
+        if larg > livre:                 # endereco comprido (tunel): encolhe para caber
+            escala *= livre / larg
         cv2.putText(img, txt, (x0 + int(40 * s), y0 + int((225 + 60 * i) * s)), FONT,
-                    1.0 * s, (230, 230, 230), max(1, int(2 * s)), cv2.LINE_AA)
+                    escala, (230, 230, 230), max(1, int(round(2 * escala))), cv2.LINE_AA)
     return img
 
 

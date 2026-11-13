@@ -1,4 +1,7 @@
-metodo,desvio_padrao_mm,desvio_maximo_mm,rot_max_graus,diagonal_pol
-PnP + média,2.49,5.51,0.338,24.0
-Ajuste de feixes,0.66,2.34,0.328,24.0
-Ajuste de feixes + tamanho,0.41,1.21,0.13,23.0
+sessao,metodo,desvio_padrao_mm,desvio_maximo_mm,rot_max_graus,diagonal_pol
+Sessão 1: monitor de 23 pol,PnP + média,2.49,5.51,0.338,24.0
+Sessão 1: monitor de 23 pol,Ajuste de feixes,0.66,2.34,0.328,24.0
+Sessão 1: monitor de 23 pol,Ajuste de feixes + tamanho,0.41,1.21,0.13,23.0
+Sessão 2: monitor de 21 pol,PnP + média,4.99,9.02,0.599,23.0
+Sessão 2: monitor de 21 pol,Ajuste de feixes,1.79,5.12,0.952,23.0
+Sessão 2: monitor de 21 pol,Ajuste de feixes + tamanho,1.13,2.97,0.395,21.0

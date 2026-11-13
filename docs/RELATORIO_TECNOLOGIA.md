@@ -266,7 +266,8 @@ Três estimadores da pose do monitor foram comparados (`avaliar.py`):
 |---|---|---|---|---|
 | Simulação, fotos típicas, 10 fotos | pior quina, mediana | 0,21 mm | 0,11 mm | 0,23 mm |
 | Simulação, fotos ruins, 10 fotos | pior quina, mediana | 0,47 mm | 0,16 mm | 0,22 mm |
-| 12 fotos reais, 30 subconjuntos de 10 | desvio padrão das quinas | 2,5 mm | 0,7 mm | 0,4 mm |
+| Fotos reais, sessão 1 (monitor de 23 pol), 30 subconjuntos de 10 | desvio padrão das quinas | 2,5 mm | 0,7 mm | 0,4 mm |
+| Fotos reais, sessão 2 (monitor de 21 pol), 30 subconjuntos de 10 | desvio padrão das quinas | 5,0 mm | 1,8 mm | 1,1 mm |
 
 Nas fotos reais não há posição verdadeira para comparar. O que se mede é a repetibilidade: quanto a resposta muda quando se trocam as fotos.
 

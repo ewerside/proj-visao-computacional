@@ -116,15 +116,17 @@ python avaliar.py real          # repetibilidade nas fotos reais em head_coupled
 | Típicas | 0,21 (0,53) mm | 0,11 (0,16) mm | 0,23 (0,32) mm |
 | Ruins | 0,47 (1,01) mm | 0,16 (0,21) mm | 0,22 (0,26) mm |
 
-**Fotos reais (12 fotos de um Pixel 7 Pro enviadas pela página do celular, 30 subconjuntos de 10 fotos):** quanto as quinas do monitor mudam de um subconjunto para outro.
+**Fotos reais (duas sessões de 12 fotos de um Pixel 7 Pro, enviadas pela página do celular; 30 subconjuntos de 10 fotos):** quanto as quinas do monitor mudam de um subconjunto para outro, em desvio padrão (máximo).
 
-| Estimador | Desvio padrão | Máximo |
+| Estimador | Sessão 1: monitor de 23 pol | Sessão 2: monitor de 21 pol |
 |---|---|---|
-| PnP+média | 2,5 mm | 5,5 mm |
-| BA | 0,7 mm | 2,4 mm |
-| BA+tam | 0,4 mm | 1,2 mm |
+| PnP+média | 2,5 mm (5,5) | 5,0 mm (9,0) |
+| BA | 0,7 mm (2,3) | 1,8 mm (5,1) |
+| BA+tam | 0,4 mm (1,2) | 1,1 mm (2,9) |
 
-O ajuste de feixes é seis vezes mais estável que a média por foto. O tamanho estimado do monitor (51,0 × 28,7 cm, 23,0 pol) coincide com o que o próprio monitor informa ao Windows (509 × 286 mm). Erro de reprojeção: 1,13 px.
+![Repetibilidade nas fotos reais](docs/imagens/graficos/repetibilidade_fotos_reais.png)
+
+Nas duas sessões o ajuste de feixes que estima o tamanho é de quatro a seis vezes mais estável que a média por foto. Na sessão 1, o tamanho estimado do monitor (51,0 × 28,7 cm, 23,0 pol) coincide com o que o próprio monitor informa ao Windows (509 × 286 mm). Erro de reprojeção: 1,13 px na sessão 1 e 2,66 px na sessão 2, cujas fotos foram tiradas com uma lente mais aberta. As fotos da sessão 2 estão em [`docs/imagens/calibracao_fotos/`](docs/imagens/calibracao_fotos/).
 
 ## Linha de comando (opcional)
 
@@ -175,14 +177,13 @@ Teclas principais do `main.py`: `n` troca de cena, `d` painel de debug (posiçã
 | `simular.py`, `avaliar.py`, `teste_guinada.py` | Simulador de fotos, avaliação quantitativa e teste da correção de guinada |
 | `config.py` | Medidas físicas e parâmetros |
 | `testes/` | Testes automáticos |
-| `docs/` | Relatório de tecnologia, guia de teste, guia dos slides, decisões de projeto e imagens |
+| `docs/` | Relatório de tecnologia, guia de teste, decisões de projeto e imagens |
 | `artigo/` | Fonte LaTeX do artigo (modelo SBrT) |
 
 ## Documentos
 
 - [`docs/RELATORIO_TECNOLOGIA.md`](docs/RELATORIO_TECNOLOGIA.md): todas as técnicas de visão computacional e de matemática do projeto, do rastreamento do rosto à exibição em duas telas, e as referências realmente usadas.
-- [`docs/GUIA_SLIDES.md`](docs/GUIA_SLIDES.md): roteiro para montar a apresentação.
-- [`docs/imagens/`](docs/imagens/): fotos, renders, telas e gráficos para o artigo e os slides.
+- [`docs/imagens/`](docs/imagens/): fotos, renders, telas e gráficos.
 - [`artigo/`](artigo/): o artigo.
 
 ## Limitações e trabalhos futuros

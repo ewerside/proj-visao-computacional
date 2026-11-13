@@ -5,8 +5,10 @@
 Dados (pasta dados/):
   simulado_*.json   saida de `python head_coupled/avaliar.py simulado --json ...`
                     (erro contra a verdade, por nivel, semente, numero de fotos e metodo)
-  real_13nov.json   saida de `python head_coupled/avaliar.py real <fotos> --json ...`
-                    (repetibilidade nas 12 fotos reais de 13/11/2026)
+  real_casa.json, real_faculdade.json
+                    saida de `python head_coupled/avaliar.py real <fotos> --json ...`
+                    (repetibilidade em duas sessoes de 12 fotos reais, em 13/11/2026:
+                    a primeira com um monitor de 23 pol, a segunda com um de 21 pol)
 
 Saidas: erro_simulado_por_fotos.png, repetibilidade_fotos_reais.png e as mesmas
 tabelas em CSV (para quem preferir os numeros).
@@ -90,41 +92,49 @@ def simulado():
         w.writerows(tabela)
 
 
+SESSOES = [("real_casa.json", "Sessão 1: monitor de 23 pol"),
+           ("real_faculdade.json", "Sessão 2: monitor de 21 pol")]
+
+
 def real():
-    with open(os.path.join(DADOS, "real_13nov.json"), encoding="utf-8") as fh:
-        linhas = {APELIDOS.get(l_["metodo"], l_["metodo"]): l_ for l_ in json.load(fh)}
-    fig, ax = plt.subplots(figsize=(6.4, 3.6))
-    nomes, vals, maxs, cores = [], [], [], []
-    for chave, nome, cor in METODOS:
-        nomes.append(nome.replace(" + ", "\n+ "))
-        vals.append(linhas[chave]["desvio_padrao_mm"])
-        maxs.append(linhas[chave]["desvio_max_mm"])
-        cores.append(cor)
-    barras = ax.bar(nomes, vals, color=cores, width=0.5)
-    for b, v, m in zip(barras, vals, maxs):
-        ax.annotate(f"{v:.1f} mm", (b.get_x() + b.get_width() / 2, v), xytext=(0, 6),
-                    textcoords="offset points", ha="center", color=TEXTO, fontsize=12,
-                    fontweight="bold")
-        ax.annotate(f"máx. {m:.1f}", (b.get_x() + b.get_width() / 2, v), xytext=(0, 22),
-                    textcoords="offset points", ha="center", color=FRACO, fontsize=9)
-    ax.set_ylabel("desvio padrão das quinas (mm)")
-    ax.set_ylim(0, max(vals) * 1.4)
-    ax.set_title("Fotos reais: quanto a posição do monitor muda\nentre 30 subconjuntos de 10 fotos",
-                 loc="left", color=TEXTO, fontsize=12, fontweight="bold")
-    _limpar(ax)
-    ax.tick_params(axis="x", labelcolor=TEXTO)
-    fig.tight_layout()
+    fig, eixos = plt.subplots(1, 2, figsize=(9.6, 3.9), sharey=True)
+    tabela = []
+    for ax, (arquivo, titulo) in zip(eixos, SESSOES):
+        with open(os.path.join(DADOS, arquivo), encoding="utf-8") as fh:
+            linhas = {APELIDOS.get(l_["metodo"], l_["metodo"]): l_ for l_ in json.load(fh)}
+        nomes, vals, maxs, cores = [], [], [], []
+        for chave, nome, cor in METODOS:
+            l_ = linhas[chave]
+            nomes.append(nome.replace(" + ", "\n+ ").replace("Ajuste de feixes", "Ajuste\nde feixes"))
+            vals.append(l_["desvio_padrao_mm"])
+            maxs.append(l_["desvio_max_mm"])
+            cores.append(cor)
+            tabela.append([titulo, nome, round(l_["desvio_padrao_mm"], 2),
+                           round(l_["desvio_max_mm"], 2), round(l_["rot_max_graus"], 3),
+                           round(l_["diagonal_pol"], 1)])
+        barras = ax.bar(nomes, vals, color=cores, width=0.5)
+        for b, v, m in zip(barras, vals, maxs):
+            x = b.get_x() + b.get_width() / 2
+            ax.annotate(f"{v:.1f} mm", (x, v), xytext=(0, 6), textcoords="offset points",
+                        ha="center", color=TEXTO, fontsize=12, fontweight="bold")
+            ax.annotate(f"máx. {m:.1f}", (x, v), xytext=(0, 22), textcoords="offset points",
+                        ha="center", color=FRACO, fontsize=9)
+        ax.set_title(titulo, loc="left", color=TEXTO, fontsize=12, fontweight="bold")
+        _limpar(ax)
+        ax.tick_params(axis="x", labelcolor=TEXTO, labelsize=9.5)
+    eixos[0].set_ylabel("desvio padrão das quinas (mm)")
+    eixos[0].set_ylim(0, 6.6)
+    fig.suptitle("Fotos reais: quanto a posição do monitor muda entre 30 subconjuntos de 10 fotos",
+                 x=0.012, ha="left", color=TEXTO, fontsize=12.5)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(os.path.join(AQUI, "repetibilidade_fotos_reais.png"), dpi=200)
     plt.close(fig)
     with open(os.path.join(AQUI, "repetibilidade_fotos_reais.csv"), "w", newline="",
               encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["metodo", "desvio_padrao_mm", "desvio_maximo_mm", "rot_max_graus",
+        w.writerow(["sessao", "metodo", "desvio_padrao_mm", "desvio_maximo_mm", "rot_max_graus",
                     "diagonal_pol"])
-        for chave, nome, _cor in METODOS:
-            l_ = linhas[chave]
-            w.writerow([nome, round(l_["desvio_padrao_mm"], 2), round(l_["desvio_max_mm"], 2),
-                        round(l_["rot_max_graus"], 3), round(l_["diagonal_pol"], 1)])
+        w.writerows(tabela)
 
 
 if __name__ == "__main__":
