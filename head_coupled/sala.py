@@ -22,7 +22,15 @@ import numpy as np
 
 import scene as scn
 
-CENAS_MUNDO = ["janelas", "sala", "alinhamento"]
+CENAS_MUNDO = ["janelas", "planeta", "sala", "alinhamento"]
+
+# Nome de exibicao e descricao, para o menu do Parallax.
+ROTULOS = {
+    "janelas": ("Trem", "Uma maquete com um trem que passa de uma tela para a outra."),
+    "planeta": ("Planeta", "Um gigante gasoso com aneis e luas, atras da juncao das telas."),
+    "sala": ("Sala", "Uma sala com pilares, vista pelas duas janelas."),
+    "alinhamento": ("Alinhamento", "Varetas retas atraves da juncao: confere a calibracao."),
+}
 
 GRADE_SALA = (110, 95, 80)
 GRADE_CHAO = (90, 120, 95)
@@ -230,6 +238,9 @@ def build(nome, telas):
         # _grade), e importar la em cima seria um import circular.
         import janelas
         return janelas.build(telas)
+    if nome == "planeta":
+        import planeta
+        return planeta.build(telas)
     if nome == "sala":
         return build_sala(telas)
     return build_alinhamento(telas)
@@ -239,6 +250,9 @@ def dinamico(nome, t, telas):
     if nome == "janelas":
         import janelas
         return janelas.dinamico(t, telas)
+    if nome == "planeta":
+        import planeta
+        return planeta.dinamico(t, telas)
     if nome == "sala":
         return dinamico_sala(t, telas)
     return []

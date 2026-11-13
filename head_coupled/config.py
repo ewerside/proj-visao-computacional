@@ -246,7 +246,7 @@ ANAGLYPH_PALETTE = {
 
 # ------------------------------------------------------------------------ cena
 EYE_Z_MIN = 0.10   # trava de seguranca: olho nunca colado no plano da tela
-CENA_INICIAL = "caixa"     # caixa, corredor, miniatura ou barras; tecla n troca
+CENA_INICIAL = "caixa"     # caixa, corredor, miniatura ou asteroides; tecla n troca
 
 # TODOS os cenarios sao interiores da mesma caixa, cuja boca em z=0 tem
 # exatamente as dimensoes da tela. Essa coincidencia e o que faz a ilusao

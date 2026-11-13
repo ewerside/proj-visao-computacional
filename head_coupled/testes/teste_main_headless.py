@@ -5,7 +5,8 @@ do cv2 e relogio. O resto (tracking, filtros, cena, render, HUD, teclas) e o
 codigo real. Tres execucoes com o mesmo roteiro de teclas:
 
   1. o main.py da AP1 (do git), com o scene.py da AP1;
-  2. o main.py novo com --uma-tela  -> tem de dar os MESMOS quadros, bit a bit;
+  2. o main.py novo com --uma-tela  -> na cena dos cubos (a unica mantida
+     identica a AP1), tem de dar os MESMOS quadros, bit a bit;
   3. o main.py novo com um telas.json de duas telas (monitor falso a direita)
      -> duas janelas, a do monitor no monitor certo, todas as cenas, anaglifo,
      HUD e a tecla y da guinada sem erro.
@@ -81,11 +82,14 @@ def main():
         _ambiente.instalar_tracking_falso(GUI, eixo=None)
         g_novo, img = rodar(main_novo, TECLAS_AP1, ["--uma-tela"], guardar=(11, 54))
         # Compara tudo menos a legenda do rodape (texto novo da tecla y).
-        iguais = sum(a[:2] == b[:2] and a[3] == b[3] for a, b in zip(g_ap1, g_novo))
-        print(f"AP1 x novo --uma-tela: {len(g_ap1)} x {len(g_novo)} quadros, "
-              f"{iguais} identicos fora da legenda")
-        if len(g_ap1) != len(g_novo) or iguais != len(g_ap1):
-            falhas.append("modo de uma tela diferente da AP1")
+        # So ate a primeira troca de cena (quadro 12): a cena dos cubos e a
+        # unica que o projeto final manteve identica a da AP1.
+        pares = [(a, b) for a, b in zip(g_ap1, g_novo) if a[0] < 12]
+        iguais = sum(a[:2] == b[:2] and a[3] == b[3] for a, b in pares)
+        print(f"AP1 x novo --uma-tela: {len(g_ap1)} x {len(g_novo)} quadros; cena dos "
+              f"cubos: {iguais} de {len(pares)} identicos fora da legenda")
+        if len(g_ap1) != len(g_novo) or not pares or iguais != len(pares):
+            falhas.append("modo de uma tela diferente da AP1 na cena dos cubos")
         for (q, nome), im in img.items():
             detectar.gravar_imagem(os.path.join(_ambiente.SAIDA, f"main_uma_tela_q{q}.png"),
                         cv2.resize(im, (960, 540), interpolation=cv2.INTER_AREA))

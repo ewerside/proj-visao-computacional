@@ -734,21 +734,223 @@ def miniatura_dinamico(t, dims=None):
     return objs
 
 
-CENAS = ["caixa", "corredor", "miniatura", "barras"]
+# ------------------------------------------------ corredor: acabamento ---
+#
+# O corredor original era so a casca funda com tochas. Aqui entram as pecas que
+# aumentam a leitura de profundidade: piso em xadrez (lajes que encolhem com a
+# distancia), arcos de pedra em intervalos regulares (oclusao em camadas), um
+# portal aceso no fim (ponto de fuga com destino) e brasas que voam do fundo
+# ate passar da tela (objeto que cruza o plano z = 0).
+
+PEDRA = (74, 70, 66)
+PEDRA_ARESTA = (112, 106, 100)
+LAJE = (48, 44, 42)
+PORTAL = [(16, 44, 96), (36, 110, 210), (150, 228, 255)]
+BRASA = (90, 190, 255)
+ARCO_RECUO = 0.10         # cada arco fica este tanto a frente do par de tochas
+ARCO_LARGURA = 0.018      # quanto o arco avanca da parede para dentro
+ARCO_FUNDO = 0.014        # espessura do arco na direcao do corredor
+N_BRASAS = 12
+
+
+def _extras_corredor(dims=None):
+    largura, altura = _dims(dims)
+    w, h = largura / 2, altura / 2
+    d, n = config.COR_DEPTH, config.COR_DIVISOES
+    objs = []
+    colunas = 4
+    for i in range(n):
+        z0, z1 = -d * i / n, -d * (i + 1) / n
+        for j in range(colunas):
+            if (i + j) % 2:
+                continue
+            x0, x1 = -w + largura * j / colunas, -w + largura * (j + 1) / colunas
+            objs.append(_poly([(x0, -h, z0), (x1, -h, z0), (x1, -h, z1), (x0, -h, z1)],
+                              WALL, th=1, fill=LAJE))
+    e, p = ARCO_LARGURA, ARCO_FUNDO
+    for z_tocha in config.TOCHA_Z:
+        z = z_tocha + ARCO_RECUO
+        if z > -0.03:
+            continue
+        for lado in (-1, 1):
+            xa, xb = lado * w, lado * (w - e)
+            objs.append(_poly([(xa, -h, z), (xb, -h, z), (xb, h - e, z), (xa, h - e, z)],
+                              PEDRA_ARESTA, th=1, fill=PEDRA))
+            objs.append(_poly([(xb, -h, z), (xb, -h, z - p), (xb, h - e, z - p),
+                               (xb, h - e, z)], PEDRA_ARESTA, th=1, fill=LAJE))
+        objs.append(_poly([(-w, h - e, z), (w, h - e, z), (w, h, z), (-w, h, z)],
+                          PEDRA_ARESTA, th=1, fill=PEDRA))
+        objs.append(_poly([(-w + e, h - e, z), (w - e, h - e, z), (w - e, h - e, z - p),
+                           (-w + e, h - e, z - p)], PEDRA_ARESTA, th=1, fill=LAJE))
+    for k, cor in enumerate(PORTAL):
+        s = (1.0, 0.72, 0.42)[k]
+        lx, ly = 0.34 * largura * s, 0.78 * altura * s
+        y0 = -h
+        objs.append(_poly([(-lx / 2, y0, -d), (lx / 2, y0, -d), (lx / 2, y0 + ly, -d),
+                           (-lx / 2, y0 + ly, -d)], cor, th=1, fill=cor))
+    return objs
+
+
+def _brasas(t, dims=None):
+    """Brasas que saem do portal e voam ate passar da tela, em linha reta."""
+    largura, altura = _dims(dims)
+    d = config.COR_DEPTH
+    objs = []
+    for i in range(N_BRASAS):
+        a = i * 2.399963                      # angulo aureo: espalha sem repetir
+        r = 0.18 + 0.30 * ((i * 0.618034) % 1.0)
+        x, y = r * largura / 2 * np.cos(a), r * altura / 2 * np.sin(a)
+        frente = 0.10 * (1.0 - r / 0.48)      # as do meio passam mais da tela
+        curso = d + frente
+        z = -d + ((0.17 + 0.05 * (i % 3)) * t + i * 0.37) % curso
+        s = 0.0035 * (1.0 + 0.3 * np.sin(7.0 * t + i))
+        objs.append(_poly([(x, y + s, z), (x + s, y, z), (x, y - s, z), (x - s, y, z)],
+                          BRASA, th=1, fill=BRASA))
+    return objs
+
+
+# ----------------------------------------------- miniatura: acabamento ---
+
+BALAO = [(60, 70, 215), (236, 236, 240)]
+CESTO = (58, 88, 130)
+AGUA = (150, 104, 44)
+AGUA_BORDA = (190, 150, 96)
+AVE = (235, 235, 235)
+_PERFIL_BALAO = [(0.0, -0.50), (0.42, -0.28), (0.80, 0.12), (0.78, 0.48),
+                 (0.48, 0.80), (0.0, 0.96)]
+
+
+def _balao(centro, escala, giro):
+    """Balao de ar quente: solido de revolucao em gomos de duas cores, e cesto."""
+    centro = np.asarray(centro, float)
+    n = 8
+    aneis = [_anel(r * escala, y * escala, n, giro) + centro for r, y in _PERFIL_BALAO]
+    dentro = centro + np.array([0.0, 0.25 * escala, 0.0])
+    faces = []
+    for k in range(len(aneis) - 1):
+        a, b = aneis[k], aneis[k + 1]
+        for i in range(n):
+            j = (i + 1) % n
+            if _PERFIL_BALAO[k][0] == 0.0:
+                pts = [a[i], b[i], b[j]]
+            elif _PERFIL_BALAO[k + 1][0] == 0.0:
+                pts = [a[i], a[j], b[i]]
+            else:
+                pts = [a[i], a[j], b[j], b[i]]
+            faces.append(_face(pts, BALAO[i % 2], dentro=dentro))
+    cesto = _verts_caixa(0.30 * escala, 0.22 * escala, 0.30 * escala)
+    cesto = _rot_y(cesto, giro) + centro + np.array([0.0, -0.80 * escala, 0.0])
+    faces += _solido_caixa(cesto, CESTO)
+    for i in (0, 2, 4, 6):
+        faces.append(_seg(aneis[1][i], cesto[[7, 6, 2, 3][i // 2]], CESTO))
+    return faces
+
+
+def _lago(piso_y):
+    a = np.linspace(0, 2 * np.pi, 12, endpoint=False)
+    v = np.stack([0.034 * np.cos(a), np.full(12, piso_y + 0.0008),
+                  -0.30 + 0.024 * np.sin(a)], axis=1)
+    return [_poly(v, AGUA_BORDA, th=1, fill=AGUA)]
+
+
+def _extras_miniatura_dinamico(t, piso_y):
+    objs = []
+    ang = 0.21 * t
+    c = np.array([0.020 + 0.085 * np.cos(ang), piso_y + 0.128 + 0.010 * np.sin(0.6 * t),
+                  -0.30 + 0.150 * np.sin(ang)])
+    objs.append(_sombra((c[0], 0, c[2]), 0.016, piso_y))
+    objs += _balao(c, 0.034, 0.3 * t)
+    for i in range(3):
+        a = 0.55 * t + i * 2.1
+        p = np.array([0.10 * np.cos(a), piso_y + 0.150 + 0.008 * i, -0.30 + 0.16 * np.sin(a)])
+        tang = np.array([-np.sin(a), 0.0, np.cos(a)])
+        lado = np.array([tang[2], 0.0, -tang[0]])
+        bate = 0.004 * np.sin(9.0 * t + i)
+        for s in (-1, 1):
+            ponta = p + s * 0.008 * lado + np.array([0.0, bate, 0.0])
+            objs.append(_seg(p, ponta, AVE, 2))
+    return objs
+
+
+# -------------------------------------------------------------- asteroides ---
+#
+# Cena pensada para o anaglifo. O que o estereo mostra melhor e objeto solido,
+# de aresta marcada, espalhado em MUITAS profundidades e cruzando o plano da
+# tela: a disparidade muda de sinal quando a pedra passa de tras da tela para a
+# frente dela, e e ai que ela "sai". Para nao bater na moldura (violacao de
+# janela: um objeto na frente da tela cortado pela borda), so as pedras das
+# pistas centrais avancam para z > 0; as da periferia param antes.
+
+AST_DEPTH = 0.90
+AST_FRENTE = 0.15
+ROCHAS = [(132, 126, 120), (100, 108, 122), (124, 112, 142), (92, 98, 104)]
+_OCTA = np.array([(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)], float)
+_OCTA_F = [(0, 2, 4), (2, 1, 4), (1, 3, 4), (3, 0, 4),
+           (2, 0, 5), (1, 2, 5), (3, 1, 5), (0, 3, 5)]
+
+
+def _pedras():
+    rng = np.random.RandomState(7)
+    pedras = []
+    for i in range(16):
+        a = i * 2.399963
+        r = 0.08 + 0.86 * ((i * 0.618034) % 1.0)
+        pedras.append({
+            "rx": r * np.cos(a), "ry": r * np.sin(a), "r": r,
+            "vel": 0.085 + 0.07 * rng.rand(), "fase": rng.rand() * 1.2,
+            "tam": 0.010 + 0.016 * rng.rand(),
+            "forma": 0.65 + 0.7 * rng.rand(6),
+            "wx": 0.5 + 1.2 * rng.rand(), "wy": 0.4 + 1.0 * rng.rand(),
+            "cor": ROCHAS[i % len(ROCHAS)]})
+    return pedras
+
+
+_PEDRAS = _pedras()
+
+
+def build_asteroides(dims=None):
+    return make_room(d=AST_DEPTH, n=6, dims=dims)
+
+
+def asteroides_dinamico(t, dims=None):
+    largura, altura = _dims(dims)
+    objs = []
+    for p in _PEDRAS:
+        frente = AST_FRENTE * max(0.0, 1.0 - p["r"] / 0.55)
+        curso = AST_DEPTH - 0.04 + frente
+        z = -(AST_DEPTH - 0.04) + (p["fase"] + p["vel"] * t) % curso
+        x, y = p["rx"] * largura * 0.42, p["ry"] * altura * 0.42
+        v = _OCTA * p["forma"][:, None] * p["tam"]
+        v = _rot_x(_rot_y(v, t * p["wy"] + p["fase"]), t * p["wx"])
+        centro = np.array([x, y, z])
+        v = v + centro
+        objs += [_face(v[list(f)], p["cor"], dentro=centro) for f in _OCTA_F]
+    return objs
+
+
+CENAS = ["caixa", "corredor", "miniatura", "asteroides"]
+
+# Nome de exibicao e uma linha de descricao, para o menu do Parallax.
+ROTULOS = {
+    "caixa": ("Cubos", "A cena classica: tres cubos flutuando numa caixa."),
+    "corredor": ("Corredor", "Arcos, tochas e brasas ate um portal no fundo."),
+    "miniatura": ("Vila", "Um vilarejo em miniatura, com balao e passaros."),
+    "asteroides": ("Asteroides", "Pedras que saem da tela. Feita para o anaglifo."),
+}
 
 
 def build(nome, dims=None):
     """Parte estatica da cena, construida uma vez, no referencial da tela dona.
 
-    `dims` e (largura, altura) dessa tela em metros; None usa o config (AP1).
+    `dims` e (largura, altura) dessa tela em metros; None usa o config.
     """
     if nome == "caixa":
         return build_caixa(dims)
     if nome == "corredor":
-        return build_corredor(dims)
-    if nome == "barras":
-        return build_barras(dims)
-    return build_miniatura(dims)
+        return build_corredor(dims) + _extras_corredor(dims)
+    if nome == "asteroides":
+        return build_asteroides(dims)
+    return build_miniatura(dims) + _lago(-_dims(dims)[1] / 2)
 
 
 def dinamico(nome, t, dims=None):
@@ -756,247 +958,23 @@ def dinamico(nome, t, dims=None):
     if nome == "caixa":
         return []
     if nome == "corredor":
-        return tochas_corredor(t, dims)
-    if nome == "barras":
-        return barras_dinamico(t, dims)
-    return miniatura_dinamico(t, dims)
+        return tochas_corredor(t, dims) + _brasas(t, dims)
+    if nome == "asteroides":
+        return asteroides_dinamico(t, dims)
+    return miniatura_dinamico(t, dims) + _extras_miniatura_dinamico(
+        t, -_dims(dims)[1] / 2)
 
 
 def fundo(nome, largura, altura):
     """Imagem de fundo por cenario. None significa preencher de preto.
 
-    Todos os cenarios sao interiores de caixa agora, entao nenhum tem ceu: o
-    fundo preto e o que faz as paredes iluminadas e os objetos saltarem.
+    Todos os cenarios sao interiores de caixa, entao nenhum tem ceu: o fundo
+    preto e o que faz as paredes iluminadas e os objetos saltarem.
     """
     return None
 
 
-
-
-
-
-
-
-# ------------------------------------------------------------------ barras ---
-#
-# Grade vertical no plano da tela, e um braco que a atravessa.
-#
-# O ponto do efeito NAO e um objeto passar da frente para tras. E um objeto
-# LONGO estar dos dois lados ao mesmo tempo: perto da mao ele cobre a barra,
-# perto do ombro a barra cobre ele, e a barra parece cortar o braco no meio.
-# Objeto compacto so troca de camada inteiro, e ai parece que atravessou a
-# barra como fantasma.
-#
-# Isso nao precisa de codigo de oclusao. O algoritmo do pintor ja ordena por
-# POLIGONO, entao basta o braco ser segmentado ao longo do comprimento: cada
-# anel do tubo tem a sua propria distancia ao olho, e a divisao acontece
-# exatamente onde o braco cruza z = 0.
-#
-# Por isso a mao inteira, palma e dedos, tambem e feita de tubos e nao de
-# caixas. Uma palma em caixa unica vira de lado de uma vez so, e volta a dar o
-# efeito fantasma bem no momento em que ela atravessa a grade.
-#
-# Objeto com z > 0 esta entre a tela e o seu rosto. A projecao aguenta sem
-# mudanca: com 0 < P.z < eye.z o denominador continua positivo e t fica maior
-# que 1, ampliando em vez de reduzir.
-
-COR_BARRA = (196, 200, 206)
-MANGA = (74, 66, 150)              # manga vermelho escuro
-PELE_MAO = (150, 190, 224)
-CUBOS_FUNDO = [(150, 120, 96), (110, 140, 105)]
-
-# O braco SOBE da base esquerda para o centro-direita, indo para a frente.
-#
-# A subida nao e estetica, e a diferenca entre o efeito funcionar e nao
-# funcionar. Com o braco varrendo na horizontal, as linhas de profundidade
-# constante saem VERTICAIS, paralelas as barras: duas retas paralelas se
-# sobrepoem num sliver de poucos pixels, e nenhum ajuste de z conserta isso.
-# Subindo em diagonal, a transicao de profundidade cruza a barra de through e a
-# oclusao vira area em vez de linha.
-#
-# Medido em pixels, comparando quantos pixels disputados entre barra e braco
-# ficam com cada um: a versao horizontal entregava 5160 pontos de corte, esta
-# entrega 24739, quase cinco vezes mais.
-OMBRO = np.array([-0.110, -0.170, -0.325])
-PUNHO_RECOLHIDO = np.array([-0.065, -0.115, -0.240])
-PUNHO_ESTENDIDO = np.array([0.025, 0.015, -0.015])
-
-BRACO_ANEIS = 12
-RAIO_OMBRO = 0.026
-RAIO_PUNHO = 0.016
-# A mao continua o eixo do braco: para cima, para a direita e para a frente.
-MAO_DIR = np.array([0.60, 0.50, 0.62])
-MAO_DIR = MAO_DIR / np.linalg.norm(MAO_DIR)
-
-
-def _barras(dims=None):
-    """Barras verticais exatamente em z=0, o plano da tela.
-
-    Divididas em segmentos verticais de proposito. O algoritmo do pintor ordena
-    por distancia MEDIA ao olho, entao uma barra inteira competiria com o braco
-    usando a distancia do meio dela. Segmentada, a comparacao vira local e a
-    oclusao acerta em cada altura.
-    """
-    largura, altura = _dims(dims)
-    w, h = largura / 2, altura / 2
-    n, meia = config.BARRAS_N, config.BARRAS_LARGURA / 2
-    segs = config.BARRAS_SEGMENTOS
-    objs = []
-    for i in range(n):
-        x = -w + 2 * w * (i + 0.5) / n
-        for k in range(segs):
-            y0 = -h + 2 * h * k / segs
-            y1 = -h + 2 * h * (k + 1) / segs
-            objs.append(_poly([(x - meia, y0, 0.0), (x + meia, y0, 0.0),
-                               (x + meia, y1, 0.0), (x - meia, y1, 0.0)],
-                              COR_BARRA, th=1, fill=COR_BARRA))
-    return objs
-
-
-def build_barras(dims=None):
-    """A caixa de sempre, mais a grade pregada no vidro."""
-    return make_room(dims=dims) + _barras(dims)
-
-
 def _cubo(centro, lado, cor, ang_x, ang_y):
+    """Cubo sombreado, girado em x e em y. Usado pela cena sala."""
     v = _rot_y(_rot_x(_verts_caixa(lado, lado, lado), ang_x), ang_y)
     return _solido_caixa(v + np.asarray(centro, float), cor)
-
-
-def _base_local(pontos, i):
-    """Direcao da curva e dois eixos perpendiculares a ela, no ponto i."""
-    if i == 0:
-        d = pontos[1] - pontos[0]
-    elif i == len(pontos) - 1:
-        d = pontos[-1] - pontos[-2]
-    else:
-        d = pontos[i + 1] - pontos[i - 1]
-    d = d / np.linalg.norm(d)
-    cima = np.array([0.0, 1.0, 0.0])
-    if abs(float(np.dot(d, cima))) > 0.9:
-        cima = np.array([1.0, 0.0, 0.0])
-    e1 = np.cross(d, cima)
-    e1 = e1 / np.linalg.norm(e1)
-    return d, e1, np.cross(d, e1)
-
-
-def _tubo(pontos, raios, cores, lados=8, achatamentos=None, tampas=(False, False)):
-    """Tubo poligonal ao longo de uma curva, um anel por ponto.
-
-    A segmentacao ao longo do comprimento e o mecanismo do efeito inteiro: cada
-    anel vira faces com a sua propria profundidade, entao o algoritmo do pintor
-    corta o tubo na altura da barra sem precisar saber que ela existe.
-
-    achatamentos comprime o anel no eixo vertical (e2 sai quase paralelo a y),
-    o que transforma o tubo redondo do braco na palma achatada da mao.
-    tampas fecha as pontas: ponta aberta mostra o interior vazado e vira buraco.
-    """
-    aneis = []
-    a = np.linspace(0, 2 * np.pi, lados, endpoint=False)
-    for i, (p, r) in enumerate(zip(pontos, raios)):
-        _d, e1, e2 = _base_local(pontos, i)
-        ach = 1.0 if achatamentos is None else achatamentos[i]
-        aneis.append(p + r * (np.cos(a)[:, None] * e1
-                              + ach * np.sin(a)[:, None] * e2))
-
-    faces = []
-    for i in range(len(aneis) - 1):
-        A, B = aneis[i], aneis[i + 1]
-        centro = (pontos[i] + pontos[i + 1]) / 2.0
-        for k in range(lados):
-            k2 = (k + 1) % lados
-            faces.append(_face([A[k], A[k2], B[k2], B[k]], cores[i], dentro=centro))
-    if tampas[0]:
-        faces.append(_face(aneis[0], cores[0], dentro=pontos[1]))
-    if tampas[1]:
-        faces.append(_face(aneis[-1], cores[-1], dentro=pontos[-2]))
-    return faces
-
-
-def _curva(S, C, W, n):
-    u = np.linspace(0.0, 1.0, n)[:, None]
-    return (1 - u) ** 2 * S + 2 * u * (1 - u) * C + u ** 2 * W
-
-
-def _braco_e_mao(punho):
-    """Braco, palma e dedos como um so sistema de tubos, sem emenda.
-
-    Tres decisoes, cada uma consertando um problema concreto:
-
-    1. Braco e mao sao UM tubo continuo. Antes eram duas pecas e sobrava um
-       buraco no punho, onde o tubo terminava aberto e a palma comecava
-       deslocada. Emendados, a _base_local suaviza a dobra do punho sozinha.
-
-    2. A mao dobra para a DIREITA em vez de continuar apontando para o
-       observador. Mao apontada para a camera fica escorcada e os dedos viram
-       serrilha; de lado, a palma aparece de chapa e a silhueta le como mao.
-
-    3. Palma e dedos sao tubos, nao caixas. Caixa e compacta e vira de lado de
-       uma vez so quando cruza o plano da tela, que e exatamente o efeito
-       fantasma. Segmentados, cada anel cruza no seu tempo e a barra corta a
-       mao progressivamente.
-    """
-    controle = (OMBRO + punho) / 2.0 + np.array([0.0, 0.016, 0.015])
-    pontos = list(_curva(OMBRO, controle, punho, BRACO_ANEIS))
-    raios = list(np.linspace(RAIO_OMBRO, RAIO_PUNHO, BRACO_ANEIS))
-    achata = [1.0] * BRACO_ANEIS
-
-    # Palma: dobra do punho para a direita. O achatamento maior que 1 estica o
-    # anel no eixo vertical, deixando a palma alta e fina em vez de redonda.
-    for passo, raio, ach in [(0.010, 0.013, 1.35), (0.026, 0.013, 2.05),
-                             (0.042, 0.0125, 2.30), (0.056, 0.011, 2.10)]:
-        pontos.append(punho + MAO_DIR * passo)
-        raios.append(raio)
-        achata.append(ach)
-
-    corte = int(BRACO_ANEIS * 0.62)
-    cores = [MANGA] * corte + [PELE_MAO] * (len(pontos) - 1 - corte)
-    faces = _tubo(pontos, raios, cores, lados=7, achatamentos=achata,
-                  tampas=(True, True))
-
-    # Eixos da mao: e1 e a espessura (quase z), e2 e a altura (quase y).
-    _d, e1, e2 = _base_local(pontos, len(pontos) - 1)
-    ponta = pontos[-1]
-
-    # Dedos: continuam para a direita, abertos no eixo vertical.
-    for desloc, comp in [(0.020, 0.026), (0.0068, 0.034),
-                         (-0.0068, 0.036), (-0.020, 0.030)]:
-        base = ponta + e2 * desloc
-        pts = [base, base + MAO_DIR * comp * 0.5, base + MAO_DIR * comp]
-        faces += _tubo(pts, [0.0075, 0.0070, 0.0058], [PELE_MAO] * 2, lados=5,
-                       achatamentos=[1.0, 1.0, 1.0], tampas=(False, True))
-
-    # Polegar: sai por baixo, aberto para longe da palma.
-    base_p = pontos[-3] + e2 * (-0.020)
-    dir_p = MAO_DIR * 0.42 - e2 * 0.91
-    dir_p = dir_p / np.linalg.norm(dir_p)
-    pts = [base_p, base_p + dir_p * 0.015, base_p + dir_p * 0.030]
-    faces += _tubo(pts, [0.0090, 0.0082, 0.0068], [PELE_MAO] * 2, lados=5,
-                   tampas=(False, True))
-    return faces
-
-
-def barras_dinamico(t, dims=None):
-    """Dois cubos que ficam sempre atras, e o braco que atravessa a grade.
-
-    Os cubos existem como controle: eles nunca saem de tras das barras, entao o
-    olho tem contra o que comparar quando o braco passa por cima.
-
-    `dims` nao e usado: o braco e os cubos estao em metros fixos, centrados, e
-    cabem tambem numa tela maior. Fica na assinatura para dinamico() tratar os
-    quatro cenarios igual.
-    """
-    objs = []
-    for i, cor in enumerate(CUBOS_FUNDO):
-        ang = t * 0.22 + i * np.pi
-        centro = (0.125 * np.sin(ang),
-                  0.048 * np.sin(1.7 * ang + i),
-                  -0.30 + 0.08 * np.cos(ang))
-        objs += _cubo(centro, 0.026, cor, 0.3 * np.sin(t * 0.2 + i), t * 0.18 + i)
-
-    # Perfil de ida e volta. O (1-cos)/2 nao e so suavizacao: ele faz o braco
-    # DEMORAR nas duas pontas, que e onde o efeito acontece.
-    fase = 2.0 * np.pi * t / config.HERO_PERIODO
-    s = 0.5 - 0.5 * np.cos(fase)
-    punho = PUNHO_RECOLHIDO + (PUNHO_ESTENDIDO - PUNHO_RECOLHIDO) * s
-    return objs + _braco_e_mao(punho)

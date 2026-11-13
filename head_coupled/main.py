@@ -6,7 +6,7 @@ Teclas:
   y         liga/desliga a correcao de guinada no Z (comparacao A/B)
   d         liga/desliga o overlay de debug
   ESPACO    congela a posicao do olho e a rolagem
-  n         troca de cenario (caixa / corredor / miniatura / barras)
+  n         troca de cenario (cubos / corredor / vila / asteroides)
   , / .     min_cutoff para baixo / para cima
   k / l     beta para baixo / para cima
 
@@ -24,12 +24,17 @@ Estereo:
 Varias telas (AP2): com um telas.json ao lado deste arquivo (gerado pelo
 calibrar_telas.py, ver telas.py), abre uma janela fullscreen por tela, cada uma
 no seu monitor. Os cenarios do AP1 ganham uma caixa por tela, e a tecla n passa
-tambem pelos cenarios do mundo compartilhado (janelas, sala, alinhamento). Sem
-telas.json, ou com --uma-tela, e o AP1 de sempre, uma tela so.
+tambem pelos cenarios do mundo compartilhado (trem, planeta, sala, alinhamento).
+Sem telas.json, ou com --uma-tela, e o AP1 de sempre, uma tela so. O anaglifo so
+existe com uma tela.
 
     python main.py                  usa o telas.json, se existir
     python main.py --uma-tela       ignora o telas.json (modo AP1)
     python main.py --telas outro.json
+
+O menu do Parallax (parallax.py) chama este laco com --app: comeca na cena
+pedida (--cena), circula so pelas cenas dadas (--cenas), esconde as legendas de
+teclas e ESC devolve o controle ao menu.
 """
 
 import argparse
@@ -52,6 +57,10 @@ import tracking
 
 WINDOW = "head-coupled"
 FONT = cv2.FONT_HERSHEY_SIMPLEX
+
+# Com o anaglifo ligado, toda cena comeca com a menor separacao entre as duas
+# imagens; as teclas [ e ] ajustam a partir dai.
+ESCALA_MINIMA = 0.1
 
 # Posicao da cabeca usada antes da primeira deteccao de rosto.
 HEAD_PADRAO = np.array([0.0, -config.CAM_OFFSET_Y, 0.60])
@@ -208,6 +217,13 @@ def argumentos(argv=None):
                     help="ignora o telas.json e roda o modo AP1 (so o notebook)")
     ap.add_argument("--telas", default=config.TELAS_FILE,
                     help="caminho do telas.json (padrao: ao lado do main.py)")
+    ap.add_argument("--cena", default=None, help="cena inicial")
+    ap.add_argument("--cenas", default=None,
+                    help="cenas por onde a tecla n circula, separadas por virgula")
+    ap.add_argument("--anaglifo", action="store_true",
+                    help="comeca com o anaglifo ligado (so com uma tela)")
+    ap.add_argument("--app", action="store_true",
+                    help="chamado pelo menu: sem legendas de teclas")
     return ap.parse_args(argv)
 
 
@@ -236,7 +252,10 @@ def main(argv=None):
     landmarker = tracking.make_landmarker()
     clock = tracking.Clock()
     cenas = scn.CENAS + (sala.CENAS_MUNDO if multi else [])
-    nome_cena = config.CENA_INICIAL
+    if args.cenas:
+        cenas = [c for c in args.cenas.split(",") if c in cenas] or cenas
+    nome_cena = args.cena if args.cena in cenas else (
+        config.CENA_INICIAL if config.CENA_INICIAL in cenas else cenas[0])
     cena_estatica = construir(nome_cena, lista)
     # Fundos pre-calculados por cenario e por tela. None e preencher de preto.
     fundos = {nome_cena: [scn.fundo(nome_cena, w, h) for w, h in tamanhos]}
@@ -267,6 +286,8 @@ def main(argv=None):
     ipd_px = 0.0
     stereo_scale = config.STEREO_SCALE
     escala_auto = config.STEREO_AUTO
+    if args.anaglifo and not multi:
+        stereo_scale, escala_auto = ESCALA_MINIMA, False
     paleta = scn.paleta_neutra()
     usar_paleta = True
     z_min_estatico = z_min_estaticos(nome_cena, cena_estatica, lista)
@@ -278,7 +299,7 @@ def main(argv=None):
     # e exatamente a mesma grandeza, a fracao que a lente errada deixa passar.
     vazamento_pct = 10
     cancelar_ghost = False
-    anaglifo = False     # mono e o padrao; a tecla 3 liga
+    anaglifo = bool(args.anaglifo and not multi)   # mono e o padrao; a tecla 3 liga
     modo_comp = "gray"
     debug = False
     historico = deque(maxlen=45)
@@ -461,17 +482,26 @@ def main(argv=None):
             cv2.putText(canvas, texto + (" (trocado)" if trocar_olhos else ""),
                         (px_w - 340, 88), FONT, 0.8, cor_aviso, 2, cv2.LINE_AA)
 
-        # Legenda sempre visivel: em fullscreen nao da para consultar o terminal.
-        cv2.putText(canvas, "q sai   n cena   f filtro   y guinada   d debug   "
-                            "ESPACO congela   ,. min_cutoff   kl beta",
-                    (24, px_h - 56), FONT, 0.55, (90, 90, 90), 1, cv2.LINE_AA)
-        # Cinza neutro (90,90,90) ja sobrevive a composicao: canais iguais nao
-        # fantasmam, os dois olhos leem o mesmo texto.
-        cv2.putText(canvas, "3 anaglifo   c algoritmo   p paleta   "
-                            "a escala auto   g cancelamento   [ ] escala   "
-                            "1 so olho esq   2 so olho dir   s troca L/R   "
-                            "0 teste de vazamento",
-                    (24, px_h - 24), FONT, 0.55, (90, 90, 90), 1, cv2.LINE_AA)
+        if args.app and not debug:
+            # Apresentacao: tela limpa. So uma dica curta nos primeiros segundos.
+            if t_cena < 6.0:
+                dica = "ESC menu    N proxima cena    ESPACO congela    D detalhes"
+                if anaglifo:
+                    dica += "    [ ] profundidade do 3D"
+                cv2.putText(canvas, dica, (24, px_h - 24), FONT, 0.6, (120, 120, 120),
+                            1, cv2.LINE_AA)
+        else:
+            # Legenda sempre visivel: em fullscreen nao da para consultar o terminal.
+            cv2.putText(canvas, "q sai   n cena   f filtro   y guinada   d debug   "
+                                "ESPACO congela   ,. min_cutoff   kl beta",
+                        (24, px_h - 56), FONT, 0.55, (90, 90, 90), 1, cv2.LINE_AA)
+            # Cinza neutro (90,90,90) ja sobrevive a composicao: canais iguais nao
+            # fantasmam, os dois olhos leem o mesmo texto.
+            cv2.putText(canvas, "3 anaglifo   c algoritmo   p paleta   "
+                                "a escala auto   g cancelamento   [ ] escala   "
+                                "1 so olho esq   2 so olho dir   s troca L/R   "
+                                "0 teste de vazamento",
+                        (24, px_h - 24), FONT, 0.55, (90, 90, 90), 1, cv2.LINE_AA)
 
         for nome_janela, cv in zip(janelas, canvases):
             cv2.imshow(nome_janela, cv)
@@ -491,6 +521,9 @@ def main(argv=None):
             z_min_estatico = z_min_estaticos(nome_cena, cena_estatica, lista)
             if nome_cena not in fundos:
                 fundos[nome_cena] = [scn.fundo(nome_cena, w, h) for w, h in tamanhos]
+            t_inicio = time.perf_counter()
+            if anaglifo:
+                stereo_scale, escala_auto = ESCALA_MINIMA, False
         if tecla == ord(" "):
             congelado = (None if congelado is not None else
                          (eye.copy(), theta_uso, None if eixo_uso is None else eixo_uso.copy()))
@@ -504,8 +537,11 @@ def main(argv=None):
         # ------------------------------------------------------------- estereo
         if tecla == ord("0"):
             teste_vazamento = not teste_vazamento
-        if tecla == ord("3"):
+        if tecla == ord("3") and not multi:
+            # So com uma tela. Ao ligar, comeca da menor separacao.
             anaglifo = not anaglifo
+            if anaglifo:
+                stereo_scale, escala_auto = ESCALA_MINIMA, False
         if tecla == ord("g"):
             cancelar_ghost = not cancelar_ghost
         if tecla == ord("p"):
