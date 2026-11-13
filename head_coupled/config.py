@@ -75,6 +75,11 @@ MONITOR_SEMPRE_NO_TOPO = True
 # Errar 5-10% aqui nao muda nada; errar o modelo (32 no lugar de 24) atrapalha.
 MONITOR_DIAGONAL_POL = 23.0
 
+# Como o celular alcanca o notebook na calibracao pelo menu do Parallax.
+# True: pela internet, por um tunel ssh (funciona em qualquer rede, inclusive no
+# roteador do proprio celular). False: direto, com os dois na mesma rede.
+CELULAR_TUNEL = True
+
 # Arquivos da calibracao das telas (ver calibrar_telas.py). Sem telas.json o
 # main.py roda no modo de uma tela so, exatamente como na AP1.
 TELAS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "telas.json")
@@ -287,3 +292,32 @@ HERO_Z_FUNDO = -0.42
 HERO_Z_FRENTE = 0.05
 HERO_PERIODO = 9.0     # segundos para ida e volta completas
 HERO_DERIVA = 0.060    # deriva lateral no fundo; vai a zero ao vir para a frente
+
+
+# ------------------------------------------------- ajustes feitos pelo menu
+# A tela de Configuracoes do Parallax grava aqui (ajustes.json, fora do git) so
+# o que o usuario mudou. Os padroes deste arquivo sao os do notebook do projeto
+# (tela de 15.6 pol); quem usa outro equipamento muda pelo menu, sem editar codigo.
+AJUSTES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ajustes.json")
+AJUSTAVEIS = ("SCREEN_W", "SCREEN_H", "MONITOR_DIAGONAL_POL", "CELULAR_TUNEL")
+PADROES = {nome: globals()[nome] for nome in AJUSTAVEIS}
+
+
+def _aplicar_ajustes():
+    import json
+    if not os.path.exists(AJUSTES_FILE):
+        return
+    try:
+        with open(AJUSTES_FILE, encoding="utf-8") as fh:
+            dados = json.load(fh)
+    except (OSError, ValueError):
+        return
+    g = globals()
+    for nome in AJUSTAVEIS:
+        if nome in dados and type(dados[nome]) in (int, float, bool):
+            g[nome] = type(PADROES[nome])(dados[nome])
+    # Derivado da altura da tela: tem de acompanhar.
+    g["CAM_OFFSET_Y"] = g["SCREEN_H"] / 2 + 0.010
+
+
+_aplicar_ajustes()

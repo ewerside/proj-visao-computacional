@@ -100,6 +100,20 @@ def _rotulo_celular(img_cinza, papel, dispositivo, url, qr, tunel=False):
     return img
 
 
+def _com_status(img_cinza, texto):
+    """Padrao com uma linha de status na margem de baixo, fora do tabuleiro.
+
+    A margem branca em volta do tabuleiro nao entra na deteccao, entao o texto
+    pode ficar na tela durante as fotos.
+    """
+    img = img_cinza.copy()
+    h = img.shape[0]
+    s = h / 1080.0
+    cv2.putText(img, texto, (int(60 * s), h - int(16 * s)), FONT, 0.7 * s, 0,
+                max(1, int(2 * s)), cv2.LINE_AA)
+    return img
+
+
 def cmd_mostrar(args, servidor=None):
     """servidor: celular.Servidor ja criado (comando celular), ou None."""
     import monitores
@@ -174,6 +188,7 @@ def cmd_mostrar(args, servidor=None):
               "celular abrir a pagina. Tecla t troca as telas, ESPACO mostra o QR de novo.")
     mostrar_rotulo = True
     ja_conectou = False
+    status_cache = [None, None]
     while True:
         if servidor is not None:
             if servidor.conectado and not ja_conectou:
@@ -187,6 +202,15 @@ def cmd_mostrar(args, servidor=None):
             papel = "NOTEBOOK" if i == i_nb else "MONITOR"
             if not mostrar_rotulo:
                 img = imgs[i]
+                if servidor is not None and i == i_nb:
+                    import celular
+                    boas = sum(f["boa"] for f in servidor.fotos)
+                    texto = (f"Parallax   {boas} de {celular.IDEAL} fotos boas"
+                             + ("   calculando..." if servidor.calculando else "")
+                             + ("   pronto" if servidor.terminou else ""))
+                    if status_cache[0] != (texto, id(img)):
+                        status_cache[:] = [(texto, id(img)), _com_status(img, texto)]
+                    img = status_cache[1]
             elif servidor is None:
                 img = _rotulo(imgs[i], papel, mons[i].dispositivo)
             else:
@@ -224,8 +248,16 @@ def cmd_mostrar(args, servidor=None):
 
 # ================================================================ celular ===
 
-def cmd_celular(args):
-    """mostrar + servidor: o celular manda as fotos e pede o calculo pela pagina."""
+def cmd_celular(args, retorno=None):
+    """mostrar + servidor: o celular manda as fotos e pede o calculo pela pagina.
+
+    retorno: dicionario opcional que recebe "resultado" (resumo da calibracao,
+    ou None), "pasta" (das fotos) e "erro" (mensagem, ou None). E como o menu
+    do Parallax fica sabendo do que aconteceu sem ler o terminal.
+    """
+    if retorno is None:
+        retorno = {}
+    retorno.update(resultado=None, pasta=None, erro=None)
     import celular
     destino = args.saida or config.PADROES_FILE
 
@@ -238,6 +270,7 @@ def cmd_celular(args):
                                     host="127.0.0.1" if args.tunel else "0.0.0.0")
     except OSError as e:
         print(f"nao consegui abrir a porta {args.porta}: {e}. Tente --porta 8766")
+        retorno["erro"] = f"Nao consegui abrir a porta {args.porta} do notebook."
         return 1
     tunel = None
     if args.tunel:
@@ -248,6 +281,7 @@ def cmd_celular(args):
         except RuntimeError as e:
             print(f"{e}")
             servidor.http.server_close()
+            retorno["erro"] = str(e)
             return 1
         servidor.url = f"{publico}/{servidor.token}/"
     try:
@@ -257,6 +291,11 @@ def cmd_celular(args):
             servidor.parar()
         if tunel is not None:
             tunel.terminate()
+    retorno.update(resultado=servidor.resultado if servidor.terminou else None,
+                   pasta=servidor.pasta)
+    if cod != 0:
+        retorno["erro"] = ("Preciso de dois monitores. Ligue o monitor externo e "
+                           "escolha Estender (Win+P).")
     if cod == 0 and servidor.terminou:
         r = servidor.resultado
         g, q = r["resumo"], r["qualidade"]

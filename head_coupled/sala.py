@@ -27,9 +27,9 @@ CENAS_MUNDO = ["janelas", "planeta", "sala", "alinhamento"]
 # Nome de exibicao e descricao, para o menu do Parallax.
 ROTULOS = {
     "janelas": ("Trem", "Uma maquete com um trem que passa de uma tela para a outra."),
-    "planeta": ("Planeta", "Um gigante gasoso com aneis e luas, atras da juncao das telas."),
+    "planeta": ("Planeta", "Um gigante gasoso com anéis e luas, atrás da junção das telas."),
     "sala": ("Sala", "Uma sala com pilares, vista pelas duas janelas."),
-    "alinhamento": ("Alinhamento", "Varetas retas atraves da juncao: confere a calibracao."),
+    "alinhamento": ("Alinhamento", "Varetas retas através da junção: confere a calibração."),
 }
 
 GRADE_SALA = (110, 95, 80)

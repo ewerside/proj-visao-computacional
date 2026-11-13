@@ -932,10 +932,10 @@ CENAS = ["caixa", "corredor", "miniatura", "asteroides"]
 
 # Nome de exibicao e uma linha de descricao, para o menu do Parallax.
 ROTULOS = {
-    "caixa": ("Cubos", "A cena classica: tres cubos flutuando numa caixa."),
-    "corredor": ("Corredor", "Arcos, tochas e brasas ate um portal no fundo."),
-    "miniatura": ("Vila", "Um vilarejo em miniatura, com balao e passaros."),
-    "asteroides": ("Asteroides", "Pedras que saem da tela. Feita para o anaglifo."),
+    "caixa": ("Cubos", "A cena clássica: três cubos flutuando numa caixa."),
+    "corredor": ("Corredor", "Arcos, tochas e brasas até um portal no fundo."),
+    "miniatura": ("Vila", "Um vilarejo em miniatura, com balão e pássaros."),
+    "asteroides": ("Asteroides", "Pedras que saem da tela. Feita para o anáglifo."),
 }
 
 
