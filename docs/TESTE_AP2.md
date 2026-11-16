@@ -193,12 +193,14 @@ Isto ainda não usa o celular. Serve para ver as duas telas funcionando e é o p
 4. Rode:
 
    ```bash
-   python main.py
+   python main.py --direto
    ```
 
    As duas telas devem reagir ao movimento da cabeça. A tecla `n` troca de cena: primeiro as da AP1, com uma caixa em cada tela; depois `janelas`, `sala` e `alinhamento`, um mundo só visto pelas duas telas. Como a trena é imprecisa, é normal haver um pequeno degrau nas retas que cruzam a junção.
 
 ## 8. VOCÊ: calibração com o celular (15 min)
+
+> **Atalho:** `python calibrar_telas.py celular` faz os passos 8.1, 8.4 e 8.5 sozinho. Ele mostra um QR code no notebook; o celular abre a página, tira as fotos pela câmera dele e manda direto, e o botão "Calcular" da página grava o `telas.json`. As dicas de 8.2 e 8.3 continuam valendo. Celular e notebook na mesma rede.
 
 ### 8.1 Mostrar os padrões
 
@@ -255,7 +257,7 @@ python calibrar_telas.py calcular
 ## 9. VOCÊ: as duas telas com a calibração (10 min)
 
 ```bash
-python main.py
+python main.py --direto
 ```
 
 | Tecla | O que faz |

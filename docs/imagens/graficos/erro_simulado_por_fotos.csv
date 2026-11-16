@@ -1,0 +1,31 @@
+nivel,fotos,metodo,conjuntos,pior_quina_mediana_mm,pior_quina_maxima_mm
+tipico,4,PnP + média,5,0.357,0.684
+tipico,6,PnP + média,5,0.161,0.532
+tipico,8,PnP + média,5,0.298,0.6
+tipico,10,PnP + média,5,0.22,0.534
+tipico,15,PnP + média,5,0.14,0.22
+tipico,4,Ajuste de feixes,5,0.096,0.135
+tipico,6,Ajuste de feixes,5,0.149,0.28
+tipico,8,Ajuste de feixes,5,0.134,0.284
+tipico,10,Ajuste de feixes,5,0.109,0.16
+tipico,15,Ajuste de feixes,5,0.065,0.139
+tipico,4,Ajuste de feixes + tamanho,5,0.135,0.244
+tipico,6,Ajuste de feixes + tamanho,5,0.222,0.413
+tipico,8,Ajuste de feixes + tamanho,5,0.245,0.475
+tipico,10,Ajuste de feixes + tamanho,5,0.221,0.324
+tipico,15,Ajuste de feixes + tamanho,5,0.144,0.194
+ruim,4,PnP + média,5,0.871,1.226
+ruim,6,PnP + média,5,0.357,0.661
+ruim,8,PnP + média,5,0.442,0.991
+ruim,10,PnP + média,5,0.548,1.006
+ruim,15,PnP + média,5,0.218,0.544
+ruim,4,Ajuste de feixes,5,0.179,0.7
+ruim,6,Ajuste de feixes,5,0.205,0.586
+ruim,8,Ajuste de feixes,5,0.203,0.264
+ruim,10,Ajuste de feixes,5,0.159,0.206
+ruim,15,Ajuste de feixes,5,0.277,0.334
+ruim,4,Ajuste de feixes + tamanho,5,0.253,1.454
+ruim,6,Ajuste de feixes + tamanho,5,0.281,0.933
+ruim,8,Ajuste de feixes + tamanho,5,0.213,0.271
+ruim,10,Ajuste de feixes + tamanho,5,0.208,0.255
+ruim,15,Ajuste de feixes + tamanho,5,0.299,0.357

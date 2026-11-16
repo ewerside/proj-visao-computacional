@@ -1,0 +1,47 @@
+[
+ {
+  "metodo": "PnP+media",
+  "centro_cm": [
+   -44.5,
+   -2.3,
+   8.2
+  ],
+  "diagonal_pol": 23.999999999999996,
+  "desvio_padrao_mm": 2.4940291142696354,
+  "desvio_max_mm": 5.514401712077026,
+  "rot_max_graus": 0.33816486037741,
+  "subconjuntos": 30,
+  "n": 10,
+  "rms_px": null
+ },
+ {
+  "metodo": "BA",
+  "centro_cm": [
+   -44.3,
+   -2.5,
+   11.2
+  ],
+  "diagonal_pol": 23.999999999999996,
+  "desvio_padrao_mm": 0.6562265103874195,
+  "desvio_max_mm": 2.340067111879343,
+  "rot_max_graus": 0.3277083884752451,
+  "subconjuntos": 30,
+  "n": 10,
+  "rms_px": 2.71393798287319
+ },
+ {
+  "metodo": "BA+tam",
+  "centro_cm": [
+   -43.3,
+   -2.4,
+   10.9
+  ],
+  "diagonal_pol": 23.02540077490102,
+  "desvio_padrao_mm": 0.40804718871024753,
+  "desvio_max_mm": 1.2096778170990912,
+  "rot_max_graus": 0.1295366543599111,
+  "subconjuntos": 30,
+  "n": 10,
+  "rms_px": 1.1323762496425904
+ }
+]

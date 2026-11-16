@@ -52,7 +52,9 @@ def main():
     t_forcada = telas.tela_do_config()
     t_forcada.identidade = False          # obriga o caminho (P - t) @ R
     falhas, casos = [], 0
-    for nome in ap1.CENAS:
+    # So a cena que o projeto final manteve identica a da AP1. O corredor e a
+    # vila ganharam pecas novas e a das barras saiu.
+    for nome in [n for n in ap1.CENAS if n == "caixa"]:
         if not mesma_geometria(ap1.build(nome), scn.build(nome)):
             falhas.append(f"{nome}: geometria estatica diferente")
         for t in T_ANIM:
